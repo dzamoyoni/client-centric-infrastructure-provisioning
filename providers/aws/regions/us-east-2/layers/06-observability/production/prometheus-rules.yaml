@@ -1,0 +1,367 @@
+# # ============================================================================
+# # Production Prometheus Alerting Rules - Ohio-01-EKS Cluster
+# # ============================================================================
+# # Comprehensive alerting rules for Kubernetes cluster, applications, and infrastructure
+# # Designed for competitive production observability with proper SLOs/SLIs
+# # ============================================================================
+
+# apiVersion: monitoring.coreos.com/v1
+# kind: PrometheusRule
+# metadata:
+#   name: ohio-01-eks-production-alerts
+#   namespace: monitoring
+#   labels:
+#     app: prometheus
+#     component: alerting-rules
+#     environment: production
+#     cluster: ohio-01-eks
+# spec:
+#   groups:
+  
+#   # ============================================================================
+#   # CRITICAL INFRASTRUCTURE ALERTS - Immediate Response Required
+#   # ============================================================================
+#   - name: critical.infrastructure
+#     interval: 30s
+#     rules:
+    
+#     - alert: KubernetesNodeDown
+#       expr: up{job="node-exporter"} == 0
+#       for: 1m
+#       labels:
+#         severity: critical
+#         team: platform
+#         runbook: "https://runbooks.company.com/kubernetes/node-down"
+#       annotations:
+#         summary: "Kubernetes node {{ $labels.instance }} is down"
+#         description: "Node {{ $labels.instance }} has been down for more than 1 minute. Immediate investigation required."
+        
+#     - alert: KubernetesNodeNotReady
+#       expr: kube_node_status_condition{condition="Ready",status="true"} == 0
+#       for: 5m
+#       labels:
+#         severity: critical
+#         team: platform
+#       annotations:
+#         summary: "Kubernetes node {{ $labels.node }} not ready"
+#         description: "Node {{ $labels.node }} has been in NotReady state for more than 5 minutes."
+        
+#     - alert: EtcdClusterDown
+#       expr: etcd_up < 3
+#       for: 3m
+#       labels:
+#         severity: critical
+#         team: platform
+#       annotations:
+#         summary: "Etcd cluster has insufficient healthy members"
+#         description: "Etcd cluster has {{ $value }} healthy members. Requires immediate attention."
+
+#   # ============================================================================
+#   #  HIGH RESOURCE UTILIZATION - Performance Impact
+#   # ============================================================================
+#   - name: high.resource.utilization
+#     interval: 30s
+#     rules:
+    
+#     - alert: HighNodeCPUUsage
+#       expr: 100 - (avg(irate(node_cpu_seconds_total{mode="idle"}[5m])) BY (instance) * 100) > 85
+#       for: 10m
+#       labels:
+#         severity: warning
+#         team: platform
+#       annotations:
+#         summary: "High CPU usage on node {{ $labels.instance }}"
+#         description: "Node {{ $labels.instance }} has CPU usage above 85% for more than 10 minutes."
+        
+#     - alert: HighNodeMemoryUsage
+#       expr: (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100 > 85
+#       for: 10m
+#       labels:
+#         severity: warning
+#         team: platform
+#       annotations:
+#         summary: "High memory usage on node {{ $labels.instance }}"
+#         description: "Node {{ $labels.instance }} has memory usage above 85% for more than 10 minutes."
+        
+#     - alert: HighNodeDiskUsage
+#       expr: (1 - (node_filesystem_avail_bytes{fstype!="tmpfs"} / node_filesystem_size_bytes{fstype!="tmpfs"})) * 100 > 85
+#       for: 5m
+#       labels:
+#         severity: warning
+#         team: platform
+#       annotations:
+#         summary: "High disk usage on node {{ $labels.instance }}"
+#         description: "Disk {{ $labels.mountpoint }} on {{ $labels.instance }} is {{ $value }}% full."
+
+#   # ============================================================================
+#   #  APPLICATION SLI/SLO MONITORING - Business Impact
+#   # ============================================================================
+#   - name: application.sli.slo
+#     interval: 30s
+#     rules:
+    
+#     - alert: ApplicationHighErrorRate
+#       expr: (sum(rate(istio_requests_total{response_code!~"2..|3.."}[5m])) / sum(rate(istio_requests_total[5m]))) * 100 > 5
+#       for: 5m
+#       labels:
+#         severity: critical
+#         team: application
+#       annotations:
+#         summary: "High error rate detected"
+#         description: "Application error rate is {{ $value }}% over the last 5 minutes, exceeding SLO threshold of 5%."
+        
+#     - alert: ApplicationHighLatency
+#       expr: histogram_quantile(0.95, sum(rate(istio_request_duration_milliseconds_bucket[5m])) by (le)) > 1000
+#       for: 10m
+#       labels:
+#         severity: warning
+#         team: application
+#       annotations:
+#         summary: "High application latency detected"
+#         description: "95th percentile latency is {{ $value }}ms, exceeding SLO threshold of 1000ms."
+
+#   # ============================================================================
+#   #  DATABASE MONITORING - Data Integrity & Performance
+#   # ============================================================================
+#   - name: database.monitoring
+#     interval: 60s
+#     rules:
+    
+#     - alert: PostgreSQLDown
+#       expr: pg_up == 0
+#       for: 1m
+#       labels:
+#         severity: critical
+#         team: database
+#       annotations:
+#         summary: "PostgreSQL instance {{ $labels.instance }} is down"
+#         description: "PostgreSQL database {{ $labels.instance }} has been down for more than 1 minute."
+        
+#     - alert: PostgreSQLHighConnections
+#       expr: pg_stat_database_numbackends / pg_settings_max_connections * 100 > 80
+#       for: 5m
+#       labels:
+#         severity: warning
+#         team: database
+#       annotations:
+#         summary: "High PostgreSQL connections on {{ $labels.instance }}"
+#         description: "PostgreSQL instance {{ $labels.instance }} has {{ $value }}% connection usage."
+        
+#     - alert: PostgreSQLSlowQueries
+#       expr: pg_stat_statements_mean_time_ms > 1000
+#       for: 10m
+#       labels:
+#         severity: warning
+#         team: database
+#       annotations:
+#         summary: "Slow PostgreSQL queries detected"
+#         description: "Average query time is {{ $value }}ms on {{ $labels.instance }}."
+
+#   # ============================================================================
+#   #  KUBERNETES WORKLOAD MONITORING
+#   # ============================================================================
+#   - name: kubernetes.workloads
+#     interval: 60s
+#     rules:
+    
+#     - alert: PodCrashLooping
+#       expr: rate(kube_pod_container_status_restarts_total[5m]) * 60 * 5 > 0
+#       for: 5m
+#       labels:
+#         severity: warning
+#         team: platform
+#       annotations:
+#         summary: "Pod {{ $labels.namespace }}/{{ $labels.pod }} is crash looping"
+#         description: "Pod {{ $labels.namespace }}/{{ $labels.pod }} has restarted {{ $value }} times in the last 5 minutes."
+        
+#     - alert: PodMemoryUsageHigh
+#       expr: sum(container_memory_usage_bytes{name!=""}) BY (instance, name) / sum(container_spec_memory_limit_bytes > 0) BY (instance, name) * 100 > 90
+#       for: 10m
+#       labels:
+#         severity: critical
+#         team: application
+#       annotations:
+#         summary: "Pod {{ $labels.name }} high memory usage"
+#         description: "Pod {{ $labels.name }} on {{ $labels.instance }} is using {{ $value }}% of its memory limit."
+        
+#     - alert: DeploymentReplicasMismatch
+#       expr: kube_deployment_status_replicas != kube_deployment_spec_replicas
+#       for: 10m
+#       labels:
+#         severity: warning
+#         team: platform
+#       annotations:
+#         summary: "Deployment replica mismatch in {{ $labels.namespace }}/{{ $labels.deployment }}"
+#         description: "Deployment {{ $labels.deployment }} has {{ $value }} replicas running, but {{ $labels.spec_replicas }} expected."
+
+#   # ============================================================================
+#   #  SERVICE MESH MONITORING (Istio)
+#   # ============================================================================
+#   - name: service.mesh.monitoring
+#     interval: 30s
+#     rules:
+    
+#     - alert: IstioControlPlaneDown
+#       expr: up{job="istiod"} == 0
+#       for: 1m
+#       labels:
+#         severity: critical
+#         team: platform
+#       annotations:
+#         summary: "Istio control plane is down"
+#         description: "Istio control plane component {{ $labels.instance }} has been down for more than 1 minute."
+        
+#     - alert: IstioSidecarVersionMismatch
+#       expr: count by (cluster) (count by (cluster, proxy_version) (envoy_cluster_assignment_stale{cluster="inbound|80||"})) > 1
+#       for: 10m
+#       labels:
+#         severity: warning
+#         team: platform
+#       annotations:
+#         summary: "Istio sidecar version mismatch detected"
+#         description: "Multiple Istio sidecar versions detected in cluster. This may cause compatibility issues."
+
+#   # ============================================================================
+#   # OBSERVABILITY STACK HEALTH
+#   # ============================================================================
+#   - name: observability.health
+#     interval: 60s
+#     rules:
+    
+#     - alert: PrometheusTargetDown
+#       expr: up == 0
+#       for: 5m
+#       labels:
+#         severity: warning
+#         team: observability
+#       annotations:
+#         summary: "Prometheus target {{ $labels.instance }} is down"
+#         description: "Prometheus target {{ $labels.instance }} for job {{ $labels.job }} has been down for more than 5 minutes."
+        
+#     - alert: AlertmanagerDown
+#       expr: up{job="alertmanager"} == 0
+#       for: 1m
+#       labels:
+#         severity: critical
+#         team: observability
+#       annotations:
+#         summary: "Alertmanager instance down"
+#         description: "Alertmanager instance {{ $labels.instance }} has been down for more than 1 minute."
+        
+#     - alert: GrafanaDown
+#       expr: up{job="grafana"} == 0
+#       for: 5m
+#       labels:
+#         severity: warning
+#         team: observability
+#       annotations:
+#         summary: "Grafana instance down"
+#         description: "Grafana instance {{ $labels.instance }} has been down for more than 5 minutes."
+        
+#     - alert: JaegerCollectorDown
+#       expr: up{job="jaeger-collector"} == 0
+#       for: 5m
+#       labels:
+#         severity: warning
+#         team: observability
+#       annotations:
+#         summary: "Jaeger collector down"
+#         description: "Jaeger collector {{ $labels.instance }} has been down for more than 5 minutes."
+
+#   # ============================================================================
+#   # SECURITY MONITORING
+#   # ============================================================================
+#   - name: security.monitoring
+#     interval: 60s
+#     rules:
+    
+#     - alert: SuspiciousPodCreation
+#       expr: increase(kube_pod_created[5m]) > 10
+#       for: 0m
+#       labels:
+#         severity: warning
+#         team: security
+#       annotations:
+#         summary: "Suspicious pod creation activity"
+#         description: "{{ $value }} pods created in the last 5 minutes, which is unusually high."
+        
+#     - alert: UnauthorizedAPIAccess
+#       expr: increase(apiserver_audit_total{verb=~"create|update|delete"}[10m]) > 100
+#       for: 0m
+#       labels:
+#         severity: warning
+#         team: security
+#       annotations:
+#         summary: "High API server activity"
+#         description: "{{ $value }} API operations in the last 10 minutes."
+
+#   # ============================================================================
+#   # COST OPTIMIZATION MONITORING
+#   # ============================================================================
+#   - name: cost.optimization
+#     interval: 300s
+#     rules:
+    
+#     - alert: UnderutilizedNodes
+#       expr: avg_over_time((1 - (avg(irate(node_cpu_seconds_total{mode="idle"}[5m])) BY (instance)))[1h:5m]) < 0.2
+#       for: 4h
+#       labels:
+#         severity: info
+#         team: finops
+#       annotations:
+#         summary: "Node {{ $labels.instance }} is underutilized"
+#         description: "Node {{ $labels.instance }} has been running at less than 20% CPU for 4 hours."
+        
+#     - alert: HighResourceRequests
+#       expr: sum(kube_pod_container_resource_requests{resource="cpu"}) by (node) / sum(kube_node_status_allocatable{resource="cpu"}) by (node) * 100 > 90
+#       for: 1h
+#       labels:
+#         severity: warning
+#         team: finops
+#       annotations:
+#         summary: "High CPU resource requests on node {{ $labels.node }}"
+#         description: "Node {{ $labels.node }} has {{ $value }}% CPU resources requested."
+
+# ---
+# # ============================================================================
+# # RECORDING RULES - Pre-computed Metrics for Performance
+# # ============================================================================
+# apiVersion: monitoring.coreos.com/v1
+# kind: PrometheusRule
+# metadata:
+#   name: ohio-01-eks-recording-rules
+#   namespace: monitoring
+#   labels:
+#     app: prometheus
+#     component: recording-rules
+#     environment: production
+#     cluster: ohio-01-eks
+# spec:
+#   groups:
+  
+#   - name: sli.recording.rules
+#     interval: 30s
+#     rules:
+    
+#     # Application SLI - Success Rate
+#     - record: sli:application_success_rate
+#       expr: sum(rate(istio_requests_total{response_code=~"2.."}[5m])) / sum(rate(istio_requests_total[5m]))
+      
+#     # Application SLI - Latency P95
+#     - record: sli:application_latency_p95
+#       expr: histogram_quantile(0.95, sum(rate(istio_request_duration_milliseconds_bucket[5m])) by (le))
+      
+#     # Infrastructure SLI - Node Resource Usage
+#     - record: sli:node_cpu_utilization
+#       expr: 100 - (avg(irate(node_cpu_seconds_total{mode="idle"}[5m])) BY (instance) * 100)
+      
+#     - record: sli:node_memory_utilization
+#       expr: (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100
+      
+#     # Database SLI - Connection Usage
+#     - record: sli:postgres_connection_utilization
+#       expr: pg_stat_database_numbackends / pg_settings_max_connections * 100
+      
+#     # Kubernetes SLI - Pod Availability
+#     - record: sli:pod_availability
+#       expr: sum(kube_pod_status_phase{phase="Running"}) / sum(kube_pod_status_phase) * 100

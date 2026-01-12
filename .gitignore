@@ -1,0 +1,22 @@
+.terraform/
+/home/dennis.juma/terraform/providers/aws/regions/us-east-1/layers/02-platform/production/istio-*/
+.terraform.lock.hcl# Terraform
+*.tfstate
+*.tfstate.backup
+.terraform/
+*.tfvars
+override.tf
+override.tf.json
+
+# Sensitive files
+*.pem
+*.key
+*secret*
+*password*
+vault-keys.json
+.env
+
+# IDE
+.vscode/
+.idea/
+*.swp

@@ -1,0 +1,129 @@
+# ============================================================================
+# Global CIDR Allocation Registry
+# ============================================================================
+# CRITICAL: Update this file BEFORE creating any new client VPC
+# This prevents CIDR overlaps across ALL regions and ensures proper DR setup
+#
+# Rules:
+# 1. Each client gets ONE VPC CIDR globally
+# 2. Same CIDR is used in ALL regions (required for DR with same IP addressing)
+# 3. VPC CIDRs must NOT overlap
+# 4. Check this registry before allocating new CIDRs
+# ============================================================================
+
+# Active Client Allocations
+clients:
+  est-test-a:
+    vpc_cidr: "10.0.0.0/16"  # Class A - /16 for premium tier
+    regions:
+      - us-east-2  # Primary
+      # - us-west-2  # DR (uncomment when deploying)
+    tier: premium
+    allocated_date: "2025-12-23"
+    allocated_by: "Infrastructure Team"
+    notes: "Premium tier - larger address space for future growth"
+    subnets:
+      eks: 
+        - "10.0.0.0/19"   # 10.0.0.0 - 10.0.31.255 (8,192 IPs)
+        - "10.0.32.0/19"  # 10.0.32.0 - 10.0.63.255 (8,192 IPs)
+      database:
+        - "10.0.64.0/19"  # 10.0.64.0 - 10.0.95.255 (8,192 IPs)
+        - "10.0.96.0/19"  # 10.0.96.0 - 10.0.127.255 (8,192 IPs)
+      compute:
+        - "10.0.128.0/19" # 10.0.128.0 - 10.0.159.255 (8,192 IPs)
+        - "10.0.160.0/19" # 10.0.160.0 - 10.0.191.255 (8,192 IPs)
+      # Reserved: 10.0.192.0/18 for future use
+
+  est-test-b:
+    vpc_cidr: "172.16.0.0/16"  # Class B - /16 for standard tier
+    regions:
+      - us-east-2  # Primary
+    tier: standard
+    allocated_date: "2025-12-23"
+    allocated_by: "Infrastructure Team"
+    notes: "Standard tier - adequate address space"
+    subnets:
+      eks:
+        - "172.16.0.0/20"   # 172.16.0.0 - 172.16.15.255 (4,096 IPs)
+        - "172.16.16.0/20"  # 172.16.16.0 - 172.16.31.255 (4,096 IPs)
+      database:
+        - "172.16.32.0/20"  # 172.16.32.0 - 172.16.47.255 (4,096 IPs)
+        - "172.16.48.0/20"  # 172.16.48.0 - 172.16.63.255 (4,096 IPs)
+      compute:
+        - "172.16.64.0/20"  # 172.16.64.0 - 172.16.79.255 (4,096 IPs)
+        - "172.16.80.0/20"  # 172.16.80.0 - 172.16.95.255 (4,096 IPs)
+      # Reserved: 172.16.96.0/19 for future use
+
+# Reserved Ranges - DO NOT ALLOCATE
+reserved:
+  - cidr: "10.1.0.0/16"
+    reason: "Reserved for AWS services and VPN tunneling"
+    reserved_by: "Infrastructure Team"
+    
+  - cidr: "192.168.0.0/24"
+    reason: "Reserved for testing and development"
+    reserved_by: "Infrastructure Team"
+    
+  - cidr: "169.254.0.0/16"
+    reason: "AWS link-local addresses (VPN tunnels)"
+    reserved_by: "AWS Standard"
+
+# Available Ranges for Future Clients
+available:
+  class_a:
+    - "10.2.0.0/16"
+    - "10.3.0.0/16"
+    - "10.4.0.0/16"
+    - "10.5.0.0/16"
+    # ... up to 10.255.0.0/16
+    
+  class_b:
+    - "172.17.0.0/16"
+    - "172.18.0.0/16"
+    - "172.19.0.0/16"
+    - "172.20.0.0/16"
+    # ... up to 172.31.0.0/16
+    
+  class_c:
+    - "192.168.1.0/24"
+    - "192.168.2.0/24"
+    - "192.168.108.0/24"
+    # ... up to 192.168.255.0/24
+
+# ============================================================================
+# CIDR Allocation Guidelines
+# ============================================================================
+# 
+# Premium Tier Clients:
+#   - Recommended: /16 from Class A (10.0.0.0/8)
+#   - Provides: 65,536 IPs
+#   - Use case: Large deployments, future growth, multiple environments
+#
+# Standard Tier Clients:
+#   - Recommended: /16 from Class B (172.16.0.0/12)
+#   - Provides: 65,536 IPs
+#   - Use case: Normal deployments
+#
+# Small Tier Clients:
+#   - Recommended: /20 or /24 from Class C (192.168.0.0/16)
+#   - Provides: 4,096 IPs (/20) or 256 IPs (/24)
+#   - Use case: Small deployments, testing, demos
+#
+# Subnet Allocation Within Client VPC:
+#   - EKS subnets: 2 x /19 or /20 (multi-AZ)
+#   - Database subnets: 2 x /20 or /21 (multi-AZ)
+#   - Compute subnets: 2 x /20 or /21 (multi-AZ)
+#   - Reserve at least /18 for future expansion
+#
+# ============================================================================
+# Validation Checklist Before Adding Client
+# ============================================================================
+# 
+# [ ] Check no CIDR overlap with existing clients
+# [ ] Check not in reserved ranges
+# [ ] Subnet CIDRs fit within VPC CIDR
+# [ ] Same CIDR will work in DR region (no conflicts)
+# [ ] Updated this registry BEFORE terraform apply
+# [ ] Run validation script: ./scripts/validate-cidr.sh
+#
+# ============================================================================
