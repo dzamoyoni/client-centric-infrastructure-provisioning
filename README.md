@@ -542,9 +542,9 @@ terraform apply
 5. **Istio Service Mesh**: Advanced traffic management (ambient mode)
 
 **Route53 DNS Architecture**:
-- Parent zone: `ezra.world`
-- Per-client subdomain: `{client}.ezra.world`
-- Example: `new-client-name.ezra.world`
+- Parent zone: `xyz.com`
+- Per-client subdomain: `{client}.xyz.com`
+- Example: `new-client-name.xyz.com`
 
 **Deployment**:
 ```bash
@@ -577,10 +577,10 @@ metadata:
   name: test-ingress
   annotations:
     kubernetes.io/ingress.class: alb
-    external-dns.alpha.kubernetes.io/hostname: test.new-client-name.ezra.world
+    external-dns.alpha.kubernetes.io/hostname: test.new-client-name.xyz.com
 spec:
   rules:
-  - host: test.new-client-name.ezra.world
+  - host: test.new-client-name.xyz.com
     http:
       paths:
       - path: /
@@ -720,7 +720,7 @@ aws_load_balancer_controller_version = "1.8.1"
 istio_version                        = "1.27.1"
 
 # DNS configuration
-parent_dns_zone         = "ezra.world"
+parent_dns_zone         = "xyz.com"
 create_root_placeholder = true
 ```
 
@@ -940,12 +940,12 @@ chmod +x .git/hooks/pre-commit
 ### Architecture
 
 ```
-ezra.world (parent zone)
-├── new-client-name.ezra.world (delegated zone)
-│   ├── app.new-client-name.ezra.world
-│   ├── api.new-client-name.ezra.world
-│   └── *.new-client-name.ezra.world
-├── another-client.ezra.world
+xyz.com (parent zone)
+├── new-client-name.xyz.com (delegated zone)
+│   ├── app.new-client-name.xyz.com
+│   ├── api.new-client-name.xyz.com
+│   └── *.new-client-name.xyz.com
+├── another-client.xyz.com
 └── ...
 ```
 
@@ -954,7 +954,7 @@ ezra.world (parent zone)
 ```bash
 # Create parent zone in Route53
 aws route53 create-hosted-zone \
-  --name ezra.world \
+  --name xyz.com \
   --caller-reference $(date +%s)
 
 # Update domain registrar with AWS name servers
@@ -970,7 +970,7 @@ cd providers/aws/regions/us-east-2/layers/05-cluster-services/production
 terraform apply
 
 # Verify delegation
-dig NS new-client-name.ezra.world
+dig NS new-client-name.xyz.com
 ```
 
 ### Creating DNS Records (Automatic via ExternalDNS)
@@ -983,7 +983,7 @@ kind: Service
 metadata:
   name: my-app
   annotations:
-    external-dns.alpha.kubernetes.io/hostname: my-app.new-client-name.ezra.world
+    external-dns.alpha.kubernetes.io/hostname: my-app.new-client-name.xyz.com
 spec:
   type: LoadBalancer
   ports:
@@ -1000,7 +1000,7 @@ ExternalDNS automatically creates the A record pointing to the load balancer.
 ```bash
 # Get zone ID
 ZONE_ID=$(aws route53 list-hosted-zones-by-name \
-  --dns-name new-client-name.ezra.world \
+  --dns-name new-client-name.xyz.com \
   --query 'HostedZones[0].Id' \
   --output text)
 
@@ -1011,7 +1011,7 @@ aws route53 change-resource-record-sets \
     "Changes": [{
       "Action": "CREATE",
       "ResourceRecordSet": {
-        "Name": "manual.new-client-name.ezra.world",
+        "Name": "manual.new-client-name.xyz.com",
         "Type": "CNAME",
         "TTL": 300,
         "ResourceRecords": [{"Value": "target.example.com"}]
@@ -1096,7 +1096,7 @@ aws eks describe-nodegroup \
 
 #### 5. DNS Not Resolving
 
-**Symptom**: `nslookup app.client.ezra.world` fails.
+**Symptom**: `nslookup app.client.xyz.com` fails.
 
 **Solution**:
 ```bash
@@ -1344,16 +1344,6 @@ terraform destroy -target='module.client_databases["client"]'
 
 # List all workspaces (if using workspaces)
 terraform workspace list
-```
-
-### Architecture Decision Records (ADRs)
-
-Key design decisions documented in `docs/adr/`:
-- **ADR-001**: Client-Centric vs Multi-Tenant Architecture
-- **ADR-002**: Client Naming Conventions
-- **ADR-003**: State Management Strategy
-- **ADR-004**: DNS Hierarchy Design
-- **ADR-005**: Per-Client vs Shared Observability
 
 ---
 
@@ -1388,9 +1378,9 @@ Key design decisions documented in `docs/adr/`:
 └─────────────────────────────────────────────────────────────────────┘
 
 EMERGENCY CONTACTS:
-  Platform Team: infraops@ezra.world
+  Platform Team: infraops@xyz.com
   On-Call: +254***
-  PagerDuty: https://ezra.world
+  PagerDuty: https://xyz.com
 ```
 
 ---
