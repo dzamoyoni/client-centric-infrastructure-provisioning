@@ -138,3 +138,21 @@ variable "additional_tags" {
   type        = map(string)
   default     = {}
 }
+
+# LOG ROTATION CONFIGURATION
+variable "container_log_max_size" {
+  description = "Maximum size of container log file before rotation (e.g., 100Mi, 50Mi)"
+  type        = string
+  default     = "100Mi"
+}
+
+variable "container_log_max_files" {
+  description = "Maximum number of rotated log files to retain"
+  type        = number
+  default     = 3
+  
+  validation {
+    condition     = var.container_log_max_files >= 1 && var.container_log_max_files <= 10
+    error_message = "container_log_max_files must be between 1 and 10."
+  }
+}

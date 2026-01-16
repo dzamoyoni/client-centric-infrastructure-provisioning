@@ -31,6 +31,62 @@ locals {
   # Standard cluster naming 
   cluster_name = var.cluster_name != null ? var.cluster_name : var.project_name
 
+  # User data for node bootstrap with log rotation configuration
+  # This prevents disk space exhaustion from container logs on lean nodes
+  node_userdata = <<-EOT
+    #!/bin/bash
+    set -e
+    
+    # Configure kubelet log rotation to prevent disk space issues
+    # Especially critical for lean nodes with limited disk (20-50GB)
+    mkdir -p /etc/systemd/system/kubelet.service.d
+    
+    cat <<'EOF' > /etc/systemd/system/kubelet.service.d/10-log-rotation.conf
+    [Service]
+    Environment="KUBELET_EXTRA_ARGS=--container-log-max-size=${var.container_log_max_size} --container-log-max-files=${var.container_log_max_files}"
+    EOF
+    
+    # Configure containerd log rotation
+    mkdir -p /etc/containerd
+    
+    # Ensure containerd config includes log rotation settings
+    if [ ! -f /etc/containerd/config.toml ]; then
+      containerd config default > /etc/containerd/config.toml
+    fi
+    
+    # Add log rotation to containerd CRI plugin if not already present
+    if ! grep -q "max_container_log_line_size" /etc/containerd/config.toml; then
+      sed -i '/\[plugins."io.containerd.grpc.v1.cri".containerd\]/a \
+        [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runc.options]\n\
+          SystemdCgroup = true' /etc/containerd/config.toml 2>/dev/null || true
+    fi
+    
+    # Set up logrotate for container logs as additional safety
+    cat <<'EOF' > /etc/logrotate.d/containers
+    /var/log/pods/*/*/*.log {
+        rotate ${var.container_log_max_files}
+        size ${replace(var.container_log_max_size, "Mi", "M")}
+        missingok
+        notifempty
+        compress
+        delaycompress
+        copytruncate
+    }
+    /var/log/containers/*.log {
+        rotate ${var.container_log_max_files}
+        size ${replace(var.container_log_max_size, "Mi", "M")}
+        missingok
+        notifempty
+        compress
+        delaycompress
+        copytruncate
+    }
+    EOF
+    
+    # Reload systemd daemon
+    systemctl daemon-reload
+  EOT
+
   # Standard node group configuration
   standard_node_group_defaults = {
     capacity_type              = "ON_DEMAND"
@@ -100,7 +156,7 @@ module "eks" {
     }
   }
 
-  # Node Groups 
+  # Node Groups with custom launch template for log rotation
   eks_managed_node_groups = {
     for name, config in var.node_groups : name => merge(
       local.standard_node_group_defaults,
@@ -111,6 +167,10 @@ module "eks" {
 
         # Custom IAM role name without trailing hyphen
         iam_role_name = "${local.cluster_name}-${config.name_suffix}-nodes"
+
+        # Enable custom user data for log rotation configuration
+        enable_bootstrap_user_data = true
+        pre_bootstrap_user_data    = local.node_userdata
 
         # Add taints if specified
         taints = lookup(config, "taints", null) != null ? {
