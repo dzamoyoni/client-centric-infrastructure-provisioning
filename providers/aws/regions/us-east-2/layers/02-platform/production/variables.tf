@@ -11,11 +11,6 @@ variable "environment" {
   type        = string
 }
 
-variable "project_name" {
-  description = "Project name for resource naming"
-  type        = string
-}
-
 #  Terraform State Configuration
 variable "terraform_state_bucket" {
   description = "S3 bucket for terraform state"
