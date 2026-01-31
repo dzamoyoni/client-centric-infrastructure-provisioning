@@ -24,40 +24,70 @@ terraform {
   backend "s3" {}
 }
 
-# TAGGING STRATEGY: Provider-level default tags for consistency
-# All AWS resources will automatically inherit tags from provider configuration
+# ============================================================================
+# Centralized Tagging Configuration
+# ============================================================================
+
+module "tags" {
+  source = "../../../../../../../modules/tagging"
+  
+  # Core configuration
+  environment      = var.environment
+  layer_name       = "database"
+  region           = var.region
+  
+  # Layer-specific configuration
+  layer_purpose    = "PostgreSQL Database Management"
+  deployment_phase = "Phase-3"
+  
+  # Infrastructure classification
+  critical_infrastructure = "true"
+  backup_required        = "daily"  # Databases need daily backups
+  security_level         = "Critical"  # Databases are critical
+  
+  # Cost management (FinOps aligned)
+  cost_center      = "IT-Infrastructure"
+  billing_group    = "Platform-Engineering"
+  chargeback_code  = "EST1-DATABASE-001"
+  resource_type    = "RDS"
+  
+  # Operational settings (Enhanced for industrial standards)
+  sla_tier           = "Platinum"  # Databases need highest SLA
+  monitoring_level   = "Premium"
+  maintenance_window = "Sunday-03:00-05:00-UTC"  # After platform layer
+  dr_tier            = "Tier-1"  # Mission Critical
+  rpo                = "1h"  # 1-hour recovery point
+  rto                = "1h"  # 1-hour recovery time
+  patch_group        = "Critical"
+  runbook_url        = "https://wiki.company.com/runbooks/postgresql-database"
+  incident_contact   = "database-oncall@company.com"
+  
+  # Data management (databases handle sensitive data)
+  data_classification  = "Confidential"  # Customer data
+  data_residency       = "US"
+  encryption_required  = "true"
+  
+  # Governance
+  compliance_framework = "SOC2-ISO27001-PCI-DSS"
+  data_retention       = "7-years"
+  
+  # Database-specific
+  database_engine  = "postgresql"
+  backup_strategy  = "daily"
+  terraform_module = "modules/postgres-ec2"
+}
+
 provider "aws" {
   region = var.region
 
+  # Use minimal_tags to stay under AWS 50-tag limit
   default_tags {
-    tags = {
-      # Core identification
-      Project         = "${var.region}-${var.environment}"
-      Environment     = var.environment
-      Region          = var.region
-      
-      # Operational
-      ManagedBy       = "Terraform"
-      Layer           = "03-Database"
-      DeploymentPhase = "Layer-3"
-      
-      # Governance
-      CriticalInfra   = "true"
-      BackupRequired  = "true"
-      SecurityLevel   = "High"
-      
-      # Cost Management
-      CostCenter      = "IT-Infrastructure"
-      BillingGroup    = "Platform-Engineering"
-      
-      # Platform specific
-      ClusterRole     = "Primary"
-      PlatformType    = "Database"
-    }
+    tags = module.tags.minimal_tags
   }
 }
 
-# DATA SOURCES - Foundation and Platform Layer Outputs
+# DATA SOURCES - Foundation Layer Outputs
+# Note: Platform layer (EKS) is NOT required - database can deploy independently
 data "terraform_remote_state" "foundation" {
   backend = "s3"
   config = {
@@ -67,6 +97,7 @@ data "terraform_remote_state" "foundation" {
   }
 }
 
+# Platform layer - OPTIONAL reference (for metadata only, not required)
 data "terraform_remote_state" "platform" {
   backend = "s3"
   config = {
@@ -99,8 +130,8 @@ locals {
   client_vpcs        = data.terraform_remote_state.foundation.outputs.client_vpcs
   availability_zones = data.terraform_remote_state.foundation.outputs.availability_zones
   
-  # Platform layer outputs - per-client EKS clusters
-  client_clusters = data.terraform_remote_state.platform.outputs.client_clusters
+  # Platform layer outputs - per-client EKS clusters (OPTIONAL - may not exist)
+  client_clusters = try(data.terraform_remote_state.platform.outputs.client_clusters, {})
   
   # Filter enabled clients only
   enabled_clients = {
@@ -108,15 +139,10 @@ locals {
     if config.enabled
   }
   
-  # Validate all enabled clients have VPCs and clusters
+  # Validate all enabled clients have VPCs (clusters are optional)
   missing_vpcs = [
     for name in keys(local.enabled_clients) : name
     if !contains(keys(local.client_vpcs), name)
-  ]
-  
-  missing_clusters = [
-    for name in keys(local.enabled_clients) : name
-    if !contains(keys(local.client_clusters), name)
   ]
   
   # Build per-client database configuration
@@ -155,41 +181,43 @@ locals {
 }
 
 # VALIDATION CHECKS
+# Note: Platform layer (EKS) is NOT validated - database layer is independent
 resource "null_resource" "cross_layer_validation" {
   lifecycle {
+    # Validate VPCs exist (REQUIRED)
     precondition {
       condition     = length(local.missing_vpcs) == 0
-      error_message = "Missing VPCs from foundation layer for clients: ${join(", ", local.missing_vpcs)}. Ensure foundation layer is applied."
+      error_message = "Missing VPCs from foundation layer for clients: ${join(", ", local.missing_vpcs)}. Ensure Layer 01 (Foundation) is applied."
     }
     
-    precondition {
-      condition     = length(local.missing_clusters) == 0
-      error_message = "Missing EKS clusters from platform layer for clients: ${join(", ", local.missing_clusters)}. Ensure platform layer is applied."
-    }
+    # EKS validation REMOVED - database can deploy independently
+    # Security groups in Layer 01 already allow EKS → Database communication
+    # when EKS is eventually deployed
     
+    # Validate at least one client enabled
     precondition {
       condition     = length(local.enabled_clients) > 0
       error_message = "No enabled clients configured. Check clients.auto.tfvars."
     }
     
+    # Validate database subnets exist
     precondition {
       condition = alltrue([
         for name, config in local.client_database_config :
         length(config.database_subnet_ids) >= 1
       ])
-      error_message = "Some clients do not have database subnets. Check foundation layer."
+      error_message = "Some clients do not have database subnets. Check Layer 01 (Foundation)."
     }
   }
   
   triggers = {
+    # Track foundation VPCs
     foundation_vpcs = md5(jsonencode({
       for name in keys(local.enabled_clients) : name => local.client_vpcs[name].vpc_id
     }))
-    platform_clusters = md5(jsonencode({
-      for name in keys(local.enabled_clients) : name => local.client_clusters[name].cluster_name
-    }))
+    
+    # Track database configuration
     database_config = md5(jsonencode({
-      # project_name removed - using client-centric naming
       environment  = var.environment
       region       = var.region
       clients      = local.enabled_clients

@@ -6,10 +6,19 @@
 #   data.terraform_remote_state.foundation.outputs.client_vpcs["client-name"]
 # ============================================================================
 
+# ============================================================================
+# Core Infrastructure
+# ============================================================================
+
 # Availability Zones
 output "availability_zones" {
   description = "Availability zones used across all client VPCs"
   value       = local.availability_zones
+}
+
+output "organization_name" {
+  description = "Organization name for resource naming"
+  value       = "Org Name"  # Organization name
 }
 
 # ============================================================================
@@ -58,6 +67,92 @@ output "client_vpcs" {
 }
 
 # ============================================================================
+# Egress VPC - Centralized NAT Gateway
+# ============================================================================
+
+output "egress_vpc_id" {
+  description = "ID of the centralized Egress VPC"
+  value       = module.egress_vpc.vpc_id
+}
+
+output "egress_vpc_cidr" {
+  description = "CIDR block of the Egress VPC"
+  value       = module.egress_vpc.vpc_cidr
+}
+
+output "egress_private_subnet_ids" {
+  description = "Private subnet IDs in Egress VPC (for Transit Gateway attachment)"
+  value       = module.egress_vpc.private_subnet_ids
+}
+
+output "egress_public_subnet_ids" {
+  description = "Public subnet IDs in Egress VPC (for NAT Gateways)"
+  value       = module.egress_vpc.public_subnet_ids
+}
+
+output "egress_nat_gateway_ids" {
+  description = "NAT Gateway IDs in Egress VPC"
+  value       = module.egress_vpc.nat_gateway_ids
+}
+
+output "egress_nat_gateway_public_ips" {
+  description = "Public IPs of NAT Gateways in Egress VPC (for whitelisting)"
+  value       = module.egress_vpc.nat_gateway_public_ips
+}
+
+# ============================================================================
+# Outputs for Layer 01.5 (Transit Gateway)
+# ============================================================================
+
+output "foundation_vpc_id" {
+  description = "Foundation VPC ID (if deployed separately)"
+  value       = null  # Not currently using foundation VPC, only client VPCs
+}
+
+output "foundation_vpc_cidr" {
+  description = "Foundation VPC CIDR (if deployed)"
+  value       = null
+}
+
+output "foundation_platform_subnet_ids" {
+  description = "Foundation platform subnet IDs for TGW attachment"
+  value       = []  # Empty for client-centric architecture
+}
+
+output "foundation_platform_route_table_ids" {
+  description = "Foundation platform route table IDs for TGW routing"
+  value       = []  # Empty for client-centric architecture
+}
+
+output "client_vpc_ids" {
+  description = "Map of client VPC IDs"
+  value = {
+    for name, vpc in module.client_vpcs : name => vpc.vpc_id
+  }
+}
+
+output "client_vpc_cidrs" {
+  description = "Map of client VPC CIDR blocks"
+  value = {
+    for name, config in local.enabled_clients : name => config.network.vpc_cidr
+  }
+}
+
+output "client_eks_subnet_ids" {
+  description = "Map of client EKS subnet IDs (for Transit Gateway attachment)"
+  value = {
+    for name, vpc in module.client_vpcs : name => vpc.eks_subnet_ids
+  }
+}
+
+output "client_private_route_table_ids" {
+  description = "Map of client private route table IDs (for Transit Gateway routing)"
+  value = {
+    for name, vpc in module.client_vpcs : name => vpc.private_route_table_ids
+  }
+}
+
+# ============================================================================
 # Per-Client VPN Connections
 # ============================================================================
 # Only created for clients with vpn.enabled = true
@@ -75,6 +170,14 @@ output "client_vpn_connections" {
       description         = var.clients[client_name].vpn.description
     }
   }
+}
+
+output "vpn_enabled_clients" {
+  description = "List of client names with VPN enabled (for Layer 01.5 routing exclusion)"
+  value = [
+    for name, config in var.clients : name
+    if config.enabled && try(config.vpn.enabled, false)
+  ]
 }
 
 # ============================================================================
@@ -135,8 +238,9 @@ output "deployment_notice" {
     
     SUCCESSFULLY DEPLOYED:
     - Per-client VPCs with complete network isolation
-    - Dual NAT gateways per client (High Availability)
-    - VPC endpoints for cost optimization (S3, ECR)
+    - Centralized Egress VPC with ${length(module.egress_vpc.nat_gateway_ids)} NAT Gateway(s)
+    - Transit Gateway-ready architecture (NAT disabled in client VPCs)
+    - VPC endpoints for cost optimization (S3, ECR, DynamoDB)
     - VPC Flow Logs for security monitoring
     - Layered security groups per client
     ${length(module.client_vpn) > 0 ? "- Site-to-Site VPN connections\n" : ""}
@@ -155,11 +259,16 @@ output "deployment_notice" {
     3. Add client config to clients.auto.tfvars
     4. Apply: terraform plan && terraform apply
     
-    ➡️  NEXT PHASE: Layer 02 - Platform (EKS)
-    - Access VPCs via: outputs.client_vpcs["client-name"].vpc_id
-    - Each client gets dedicated EKS cluster in their VPC
-    - Complete isolation between client workloads
+    ➡️  NEXT PHASE: Layer 01.5 - Transit Gateway
+    - Deploy Transit Gateway for centralized routing
+    - Attach all VPCs (clients + egress) to Transit Gateway
+    - Configure routing: Clients → TGW → Egress VPC → NAT → Internet
     
-    COST ESTIMATE: ~$89/month per client (2 NAT Gateways + VPC endpoints)
+    
+    ➡️ COST ESTIMATE:
+    - Egress VPC: $90/month (2 NAT Gateways for HA)
+    - Transit Gateway: $36/month (in Layer 01.5)
+    - Per-client VPC: ~$10/month (VPC endpoints only)
+    - Total for 3 clients: ~$126/month vs $270/month (53% savings!)
   EOT
 }

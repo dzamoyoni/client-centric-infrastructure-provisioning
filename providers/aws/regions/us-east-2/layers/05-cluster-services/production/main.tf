@@ -26,21 +26,62 @@ terraform {
   }
 }
 
+# ============================================================================
+# Centralized Tagging Configuration
+# ============================================================================
+
+module "tags" {
+  source = "../../../../../../../modules/tagging"
+  
+  # Core configuration
+  environment      = var.environment
+  layer_name       = "cluster-services"
+  region           = var.region
+  
+  # Layer-specific configuration
+  layer_purpose    = "Kubernetes Essential Services (Autoscaler, ALB, ExternalDNS, Istio)"
+  deployment_phase = "Phase-5"
+  
+  # Infrastructure classification
+  critical_infrastructure = "true"
+  backup_required        = "true"
+  security_level         = "Critical"
+  
+  # Cost management (FinOps aligned)
+  cost_center      = "IT-Infrastructure"
+  billing_group    = "Platform-Engineering"
+  chargeback_code  = "EST1-CLUSTER-SVC-001"
+  resource_type    = "K8S-Services"
+  
+  # Operational settings (Enhanced for industrial standards)
+  sla_tier           = "Platinum"  # Cluster services are critical
+  monitoring_level   = "Premium"
+  maintenance_window = "Sunday-02:30-04:30-UTC"
+  dr_tier            = "Tier-1"  # Mission Critical
+  rpo                = "1h"
+  rto                = "1h"
+  patch_group        = "Critical"
+  runbook_url        = "https://wiki.company.com/runbooks/cluster-services"
+  incident_contact   = "platform-oncall@company.com"
+  
+  # Data management
+  data_classification  = "Internal"
+  data_residency       = "US"
+  encryption_required  = "true"
+  
+  # Governance
+  compliance_framework = "SOC2-ISO27001"
+  
+  # Cluster services specific
+  terraform_module = "modules/shared-services"
+}
+
 provider "aws" {
   region = var.region
 
+  # Use minimal_tags to stay under AWS 50-tag limit
   default_tags {
-    tags = {
-      Project         = "${var.region}-${var.environment}"
-      Environment     = var.environment
-      ManagedBy       = "Terraform"
-      CriticalInfra   = "true"
-      BackupRequired  = "true"
-      SecurityLevel   = "High"
-      Region          = var.region
-      Layer           = "ClusterServices"
-      DeploymentPhase = "Phase-2"
-    }
+    tags = module.tags.minimal_tags
   }
 }
 

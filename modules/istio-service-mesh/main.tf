@@ -373,9 +373,8 @@ resource "kubernetes_cluster_role_binding" "istiod_webhook_rbac_fix" {
 }
 
 # =============================================================================
-# INGRESS GATEWAY (MANUAL DEPLOYMENT) - PRODUCTION GRADE
+# INGRESS GATEWAY
 # =============================================================================
-# Use manual deployment to avoid webhook issues while maintaining full code management
 
 resource "kubernetes_service_account" "istio_ingressgateway" {
   count = var.enable_ingress_gateway ? 1 : 0
@@ -421,7 +420,7 @@ resource "kubernetes_deployment" "istio_ingressgateway" {
         labels = {
           app                       = "istio-ingressgateway"
           istio                     = "ingressgateway"
-          "sidecar.istio.io/inject" = "false" # Disable injection for manual deployment
+          "sidecar.istio.io/inject" = "false"
         }
         annotations = {
           "prometheus.io/path"   = "/stats/prometheus"

@@ -29,40 +29,62 @@ terraform {
   }
 }
 
-# =============================================================================
-# Provider Configuration
-# =============================================================================
+# ============================================================================
+# Centralized Tagging Configuration
+# ============================================================================
 
-# TAGGING STRATEGY: Provider-level default tags for consistency
-# All AWS resources will automatically inherit tags from provider configuration
+module "tags" {
+  source = "../../../../../../../modules/tagging"
+  
+  # Core configuration
+  environment      = var.environment
+  layer_name       = "standalone-compute"
+  region           = var.region
+  
+  # Layer-specific configuration
+  layer_purpose    = "Analytics and Batch Processing Compute"
+  deployment_phase = "Phase-4"
+  
+  # Infrastructure classification
+  critical_infrastructure = "false"  # Analytics is not mission-critical
+  backup_required        = "weekly"  # Weekly backups sufficient
+  security_level         = "High"
+  
+  # Cost management (FinOps aligned)
+  cost_center      = "IT-Infrastructure"
+  billing_group    = "Platform-Engineering"
+  chargeback_code  = "EST1-COMPUTE-001"
+  resource_type    = "EC2"
+  
+  # Operational settings
+  sla_tier           = "Silver"  # Lower SLA for analytics
+  monitoring_level   = "Standard"
+  maintenance_window = "Sunday-04:00-06:00-UTC"
+  dr_tier            = "Tier-3"  # Important but not critical
+  rpo                = "24h"
+  rto                = "24h"
+  patch_group        = "Standard"
+  runbook_url        = "https://wiki.company.com/runbooks/analytics-compute"
+  incident_contact   = "platform-oncall@company.com"
+  
+  # Data management
+  data_classification  = "Internal"
+  data_residency       = "US"
+  encryption_required  = "true"
+  
+  # Governance
+  compliance_framework = "SOC2-ISO27001"
+  
+  # Compute-specific
+  terraform_module = "modules/ec2-analytics"
+}
+
 provider "aws" {
   region = var.region
 
+  # Use minimal_tags to stay under AWS 50-tag limit
   default_tags {
-    tags = {
-      # Core identification
-      Project         = "${var.region}-${var.environment}"
-      Environment     = var.environment
-      Region          = var.region
-      
-      # Operational
-      ManagedBy       = "Terraform"
-      Layer           = "04-Standalone-Compute"
-      DeploymentPhase = "Layer-4"
-      
-      # Governance
-      CriticalInfra   = "false"
-      BackupRequired  = "true"
-      SecurityLevel   = "High"
-      
-      # Cost Management
-      CostCenter      = "IT-Infrastructure"
-      BillingGroup    = "Platform-Engineering"
-      
-      # Platform specific
-      ClusterRole     = "Primary"
-      PlatformType    = "Analytics"
-    }
+    tags = module.tags.minimal_tags
   }
 }
 

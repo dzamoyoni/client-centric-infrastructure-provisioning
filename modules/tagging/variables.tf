@@ -1,5 +1,5 @@
 # ============================================================================
-# Tagging Module Variables - Enterprise Standards
+# Tagging Module Variables
 # ============================================================================
 # Comprehensive variable definitions for scalable, consistent tagging
 # across all infrastructure layers and environments
@@ -33,9 +33,9 @@ variable "layer_name" {
   type        = string
   validation {
     condition = contains([
-      "foundation", "platform", "database", "observability", "application", 
+      "bootstrap", "foundation", "transit", "platform", "database", "observability", "application", 
       "security", "networking", "compute", "storage", "shared-services",
-      "client-nodegroups", "standalone-compute", "database-layer"
+      "client-nodegroups", "standalone-compute", "database-layer", "cluster-services"
     ], var.layer_name)
     error_message = "Layer name must be a valid infrastructure layer."
   }
@@ -104,10 +104,32 @@ variable "terraform_module" {
   default     = ""
 }
 
+variable "terraform_version" {
+  description = "Terraform version used for deployment (for automation tracking)"
+  type        = string
+  default     = ""
+}
+
 variable "provisioned_by" {
   description = "Who or what provisioned this infrastructure"
   type        = string
   default     = "Terraform"
+}
+
+variable "deployment_pipeline" {
+  description = "CI/CD pipeline or system that deployed this (e.g., GitHub Actions, GitLab CI, Jenkins)"
+  type        = string
+  default     = ""
+}
+
+variable "git_commit" {
+  description = "Git commit SHA that deployed this infrastructure (for version tracking)"
+  type        = string
+  default     = ""
+  validation {
+    condition     = var.git_commit == "" || can(regex("^[a-f0-9]{7,40}$", var.git_commit))
+    error_message = "Git commit must be a valid SHA (7-40 hex characters) or empty."
+  }
 }
 
 variable "account_id" {
@@ -163,9 +185,13 @@ variable "deployment_method" {
 }
 
 variable "deployment_date" {
-  description = "Deployment date (YYYY-MM-DD format, auto-generated if empty)"
+  description = "Deployment date (YYYY-MM-DD or RFC3339 format). Must be provided externally - no auto-generation to prevent state churn"
   type        = string
   default     = ""
+  validation {
+    condition     = var.deployment_date == "" || can(regex("^[0-9]{4}-[0-9]{2}-[0-9]{2}", var.deployment_date))
+    error_message = "Deployment date must be in YYYY-MM-DD format or empty."
+  }
 }
 
 variable "infrastructure_version" {
@@ -252,6 +278,66 @@ variable "monitoring_level" {
   }
 }
 
+variable "encryption_required" {
+  description = "Whether encryption is required for this resource (true/false)"
+  type        = string
+  default     = "true"
+  validation {
+    condition     = contains(["true", "false"], var.encryption_required)
+    error_message = "Encryption required must be true or false."
+  }
+}
+
+variable "data_residency" {
+  description = "Data residency requirement (region or country where data must reside)"
+  type        = string
+  default     = ""
+}
+
+variable "dr_tier" {
+  description = "Disaster Recovery tier (Tier-1: Mission Critical, Tier-2: Business Critical, Tier-3: Important, Tier-4: Non-Critical)"
+  type        = string
+  default     = "Tier-3"
+  validation {
+    condition     = var.dr_tier == "" || contains(["Tier-1", "Tier-2", "Tier-3", "Tier-4"], var.dr_tier)
+    error_message = "DR tier must be Tier-1, Tier-2, Tier-3, or Tier-4."
+  }
+}
+
+variable "rpo" {
+  description = "Recovery Point Objective (maximum acceptable data loss period, e.g., 1h, 4h, 24h)"
+  type        = string
+  default     = "24h"
+}
+
+variable "rto" {
+  description = "Recovery Time Objective (maximum acceptable downtime, e.g., 1h, 4h, 24h)"
+  type        = string
+  default     = "24h"
+}
+
+variable "patch_group" {
+  description = "Patch group for automated patching schedules (e.g., Group-A, Group-B, Critical, Non-Critical)"
+  type        = string
+  default     = "Standard"
+}
+
+variable "runbook_url" {
+  description = "URL to operational runbook or documentation for this resource"
+  type        = string
+  default     = ""
+  validation {
+    condition     = var.runbook_url == "" || can(regex("^https?://", var.runbook_url))
+    error_message = "Runbook URL must be a valid HTTP/HTTPS URL or empty."
+  }
+}
+
+variable "incident_contact" {
+  description = "Incident contact (email, Slack channel, PagerDuty, or phone for operational alerts)"
+  type        = string
+  default     = ""
+}
+
 # ============================================================================
 # Cost Management Variables
 # ============================================================================
@@ -299,6 +385,13 @@ variable "instance_schedule" {
   type        = string
   default     = "always-on"
 }
+
+variable "resource_type" {
+  description = "Type of AWS resource (EC2, RDS, EKS, S3, Lambda, etc.) for cost allocation and filtering"
+  type        = string
+  default     = ""
+}
+
 
 # ============================================================================
 # Client/Tenant Variables (Multi-tenant support)
@@ -391,9 +484,13 @@ variable "created_by" {
 }
 
 variable "creation_date" {
-  description = "Creation date (YYYY-MM-DD format, auto-generated if empty)"
+  description = "Creation date (YYYY-MM-DD format). Must be provided externally - no auto-generation to prevent state churn"
   type        = string
   default     = ""
+  validation {
+    condition     = var.creation_date == "" || can(regex("^[0-9]{4}-[0-9]{2}-[0-9]{2}", var.creation_date))
+    error_message = "Creation date must be in YYYY-MM-DD format or empty."
+  }
 }
 
 variable "change_ticket" {
@@ -448,6 +545,12 @@ variable "backup_strategy" {
 
 variable "additional_tags" {
   description = "Additional custom tags to merge with standard tags"
+  type        = map(string)
+  default     = {}
+}
+
+variable "layer_specific_tags" {
+  description = "Custom layer-specific tags to merge with default layer tags (extensible)"
   type        = map(string)
   default     = {}
 }

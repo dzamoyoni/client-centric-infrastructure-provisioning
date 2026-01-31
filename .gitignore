@@ -1,21 +1,131 @@
-.terraform/
-/home/dennis.juma/terraform/providers/aws/regions/us-east-1/layers/02-platform/production/istio-*/
-.terraform.lock.hcl# Terraform
+# Terraform State Files (NEVER commit these!)
 *.tfstate
+*.tfstate.*
 *.tfstate.backup
+terraform.tfstate.d/
+
+# Terraform Directories
 .terraform/
+.terraform.lock.hcl
+
+# Terraform Override Files
 override.tf
 override.tf.json
+*_override.tf
+*_override.tf.json
 
-# Sensitive files
+# Terraform Plan Files
+*.tfplan
+*.tfplan.json
+
+# Crash Log Files
+crash.log
+crash.*.log
+
+# Sensitive Files (CRITICAL - Never commit secrets!)
+*secret*.tfvars
+*secrets*.tfvars
+*password*.tfvars
+database-secrets.tfvars
 *.pem
 *.key
-*secret*
-*password*
+*.p12
+*.pfx
+*.crt
+*.cer
 vault-keys.json
 .env
+.env.*
 
-# IDE
+# AWS Credentials
+.aws/
+aws-credentials.txt
+credentials
+
+# SSH Keys
+id_rsa
+id_rsa.pub
+id_ed25519
+id_ed25519.pub
+*.ppk
+
+# Kubernetes Config
+kubeconfig
+kubeconfig.*
+*.kubeconfig
+
+# Backup Files
+*.bak
+*.backup
+*.old
+*.orig
+README.OLD.md
+
+# Log Files
+*.log
+logs/
+*.out
+
+# IDE and Editor Files
 .vscode/
 .idea/
 *.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Python (if using Python scripts)
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+venv/
+env/
+*.egg-info/
+
+# Node.js (if using any JS tooling)
+node_modules/
+package-lock.json
+yarn.lock
+
+# Generated Documentation
+*.pdf
+*.docx
+
+# Temporary Files
+tmp/
+temp/
+*.tmp
+
+# OS Files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Archive Files (unless intentional)
+*.zip
+*.tar.gz
+*.tar
+*.rar
+
+# Istio Generated Files
+istio-*/
+
+# Test Output
+test-results/
+coverage/
+
+# Local Development
+local/
+.local/
+dev/
+*.local
+
+# CI/CD
+.github/workflows/*.local.yml

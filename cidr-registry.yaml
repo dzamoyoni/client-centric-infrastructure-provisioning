@@ -13,7 +13,7 @@
 
 # Active Client Allocations
 clients:
-  est-test-a:
+  client-a:
     vpc_cidr: "10.0.0.0/16"  # Class A - /16 for premium tier
     regions:
       - us-east-2  # Primary
@@ -34,25 +34,25 @@ clients:
         - "10.0.160.0/19" # 10.0.160.0 - 10.0.191.255 (8,192 IPs)
       # Reserved: 10.0.192.0/18 for future use
 
-  est-test-b:
-    vpc_cidr: "172.16.0.0/16"  # Class B - /16 for standard tier
-    regions:
-      - us-east-2  # Primary
-    tier: standard
-    allocated_date: "2025-12-23"
-    allocated_by: "Infrastructure Team"
-    notes: "Standard tier - adequate address space"
-    subnets:
-      eks:
-        - "172.16.0.0/20"   # 172.16.0.0 - 172.16.15.255 (4,096 IPs)
-        - "172.16.16.0/20"  # 172.16.16.0 - 172.16.31.255 (4,096 IPs)
-      database:
-        - "172.16.32.0/20"  # 172.16.32.0 - 172.16.47.255 (4,096 IPs)
-        - "172.16.48.0/20"  # 172.16.48.0 - 172.16.63.255 (4,096 IPs)
-      compute:
-        - "172.16.64.0/20"  # 172.16.64.0 - 172.16.79.255 (4,096 IPs)
-        - "172.16.80.0/20"  # 172.16.80.0 - 172.16.95.255 (4,096 IPs)
-      # Reserved: 172.16.96.0/19 for future use
+  # est-test-b:
+  #   vpc_cidr: "172.16.0.0/16"  # Class B - /16 for standard tier
+  #   regions:
+  #     - us-east-2  # Primary
+  #   tier: standard
+  #   allocated_date: "2025-12-23"
+  #   allocated_by: "Infrastructure Team"
+  #   notes: "Standard tier - adequate address space"
+  #   subnets:
+  #     eks:
+  #       - "172.16.0.0/20"   # 172.16.0.0 - 172.16.15.255 (4,096 IPs)
+  #       - "172.16.16.0/20"  # 172.16.16.0 - 172.16.31.255 (4,096 IPs)
+  #     database:
+  #       - "172.16.32.0/20"  # 172.16.32.0 - 172.16.47.255 (4,096 IPs)
+  #       - "172.16.48.0/20"  # 172.16.48.0 - 172.16.63.255 (4,096 IPs)
+  #     compute:
+  #       - "172.16.64.0/20"  # 172.16.64.0 - 172.16.79.255 (4,096 IPs)
+  #       - "172.16.80.0/20"  # 172.16.80.0 - 172.16.95.255 (4,096 IPs)
+  #     # Reserved: 172.16.96.0/19 for future use
 
 # Reserved Ranges - DO NOT ALLOCATE
 reserved:

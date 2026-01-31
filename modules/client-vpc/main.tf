@@ -31,7 +31,7 @@ resource "aws_vpc" "client" {
   enable_dns_support   = true
 
   tags = merge(var.common_tags, {
-    Name        = "${var.project_name}-${var.client_name}-vpc-${var.region}"
+    Name        = "${var.client_name}-vpc-${var.region}"
     Purpose     = "Dedicated VPC for ${var.client_name}"
     Layer       = "Foundation"
     Client      = var.client_name
@@ -48,7 +48,7 @@ resource "aws_internet_gateway" "client" {
   vpc_id = aws_vpc.client.id
 
   tags = merge(var.common_tags, {
-    Name    = "${var.project_name}-${var.client_name}-igw-${var.region}"
+    Name    = "${var.client_name}-igw-${var.region}"
     Purpose = "Internet Gateway for ${var.client_name}"
     Layer   = "Foundation"
     Client  = var.client_name
@@ -68,7 +68,7 @@ resource "aws_subnet" "public" {
   map_public_ip_on_launch = true
 
   tags = merge(var.common_tags, {
-    Name                     = "${var.project_name}-${var.client_name}-public-${var.availability_zones[count.index]}"
+    Name                     = "${var.client_name}-public-${var.availability_zones[count.index]}"
     Purpose                  = "Public Subnet for NAT Gateways and Load Balancers"
     Layer                    = "Foundation"
     Client                   = var.client_name
@@ -79,16 +79,16 @@ resource "aws_subnet" "public" {
 }
 
 # ============================================================================
-# Elastic IPs for NAT Gateways
+# Elastic IPs for NAT Gateways (Conditional)
 # ============================================================================
 
 resource "aws_eip" "nat" {
-  count = length(var.availability_zones)
+  count = var.enable_nat_gateway ? length(var.availability_zones) : 0
 
   domain = "vpc"
 
   tags = merge(var.common_tags, {
-    Name    = "${var.project_name}-${var.client_name}-nat-eip-${var.availability_zones[count.index]}"
+    Name    = "${var.client_name}-nat-eip-${var.availability_zones[count.index]}"
     Purpose = "Elastic IP for NAT Gateway"
     Layer   = "Foundation"
     Client  = var.client_name
@@ -99,17 +99,17 @@ resource "aws_eip" "nat" {
 }
 
 # ============================================================================
-# NAT Gateways - High Availability (One per AZ)
+# NAT Gateways - High Availability (One per AZ) (Conditional)
 # ============================================================================
 
 resource "aws_nat_gateway" "client" {
-  count = length(var.availability_zones)
+  count = var.enable_nat_gateway ? length(var.availability_zones) : 0
 
   allocation_id = aws_eip.nat[count.index].id
   subnet_id     = aws_subnet.public[count.index].id
 
   tags = merge(var.common_tags, {
-    Name    = "${var.project_name}-${var.client_name}-nat-${var.availability_zones[count.index]}"
+    Name    = "${var.client_name}-nat-${var.availability_zones[count.index]}"
     Purpose = "NAT Gateway for Private Subnet Internet Access"
     Layer   = "Foundation"
     Client  = var.client_name
@@ -132,7 +132,7 @@ resource "aws_route_table" "public" {
   }
 
   tags = merge(var.common_tags, {
-    Name    = "${var.project_name}-${var.client_name}-public-rt"
+    Name    = "${var.client_name}-public-rt"
     Purpose = "Public Route Table"
     Layer   = "Foundation"
     Client  = var.client_name
@@ -159,7 +159,7 @@ resource "aws_subnet" "eks" {
   availability_zone = var.availability_zones[count.index]
 
   tags = merge(var.common_tags, {
-    Name                                        = "${var.project_name}-${var.client_name}-eks-${var.availability_zones[count.index]}"
+    Name                                        = "${var.client_name}-eks-${var.availability_zones[count.index]}"
     Purpose                                     = "EKS NodeGroup Subnet"
     Layer                                       = "Platform"
     Client                                      = var.client_name
@@ -179,11 +179,13 @@ resource "aws_subnet" "database" {
   count = length(var.availability_zones)
 
   vpc_id            = aws_vpc.client.id
-  cidr_block        = cidrsubnet(var.vpc_cidr, 8, count.index + 16) # /24 subnets
+  # Changed from +16 to +48 to avoid overlap with EKS /20 subnets
+  # EKS uses 10.0.16-31.x and 10.0.32-47.x, database uses 10.0.48.x+
+  cidr_block        = cidrsubnet(var.vpc_cidr, 8, count.index + 48) # /24 subnets
   availability_zone = var.availability_zones[count.index]
 
   tags = merge(var.common_tags, {
-    Name       = "${var.project_name}-${var.client_name}-database-${var.availability_zones[count.index]}"
+    Name       = "${var.client_name}-database-${var.availability_zones[count.index]}"
     Purpose    = "Database Layer"
     Layer      = "Database"
     Client     = var.client_name
@@ -201,11 +203,13 @@ resource "aws_subnet" "compute" {
   count = length(var.availability_zones)
 
   vpc_id            = aws_vpc.client.id
-  cidr_block        = cidrsubnet(var.vpc_cidr, 8, count.index + 32) # /24 subnets
+  # Changed from +32 to +64 to avoid overlap with EKS /20 subnets
+  # EKS uses 10.0.16-31.x and 10.0.32-47.x, compute uses 10.0.64.x+
+  cidr_block        = cidrsubnet(var.vpc_cidr, 8, count.index + 64) # /24 subnets
   availability_zone = var.availability_zones[count.index]
 
   tags = merge(var.common_tags, {
-    Name       = "${var.project_name}-${var.client_name}-compute-${var.availability_zones[count.index]}"
+    Name       = "${var.client_name}-compute-${var.availability_zones[count.index]}"
     Purpose    = "Standalone Compute Instances"
     Layer      = "Compute"
     Client     = var.client_name
@@ -224,13 +228,25 @@ resource "aws_route_table" "private" {
 
   vpc_id = aws_vpc.client.id
 
-  route {
-    cidr_block     = "0.0.0.0/0"
-    nat_gateway_id = aws_nat_gateway.client[count.index].id
+  # Route to NAT Gateway (if enabled) or Transit Gateway (for centralized egress)
+  dynamic "route" {
+    for_each = var.enable_nat_gateway ? [1] : []
+    content {
+      cidr_block     = "0.0.0.0/0"
+      nat_gateway_id = aws_nat_gateway.client[count.index].id
+    }
+  }
+
+  dynamic "route" {
+    for_each = !var.enable_nat_gateway && var.transit_gateway_id != null ? [1] : []
+    content {
+      cidr_block         = "0.0.0.0/0"
+      transit_gateway_id = var.transit_gateway_id
+    }
   }
 
   tags = merge(var.common_tags, {
-    Name    = "${var.project_name}-${var.client_name}-private-rt-${var.availability_zones[count.index]}"
+    Name    = "${var.client_name}-private-rt-${var.availability_zones[count.index]}"
     Purpose = "Private Route Table"
     Layer   = "Foundation"
     Client  = var.client_name
@@ -268,7 +284,7 @@ resource "aws_route_table_association" "compute" {
 
 # EKS NodeGroup Security Group
 resource "aws_security_group" "eks" {
-  name_prefix = "${var.project_name}-${var.client_name}-eks-"
+  name_prefix = "${var.client_name}-eks"
   vpc_id      = aws_vpc.client.id
   description = "Security group for ${var.client_name} EKS node groups"
 
@@ -299,7 +315,7 @@ resource "aws_security_group" "eks" {
   }
 
   tags = merge(var.common_tags, {
-    Name    = "${var.project_name}-${var.client_name}-eks-sg"
+    Name    = "${var.client_name}-eks-sg"
     Purpose = "EKS NodeGroup Security"
     Layer   = "Platform"
     Client  = var.client_name
@@ -312,7 +328,7 @@ resource "aws_security_group" "eks" {
 
 # Database Security Group
 resource "aws_security_group" "database" {
-  name_prefix = "${var.project_name}-${var.client_name}-database-"
+  name_prefix = "${var.client_name}-database-"
   vpc_id      = aws_vpc.client.id
   description = "Security group for ${var.client_name} database instances"
 
@@ -361,7 +377,7 @@ resource "aws_security_group" "database" {
   }
 
   tags = merge(var.common_tags, {
-    Name    = "${var.project_name}-${var.client_name}-database-sg"
+    Name    = "${var.client_name}-database-sg"
     Purpose = "Database Security"
     Layer   = "Database"
     Client  = var.client_name
@@ -374,7 +390,7 @@ resource "aws_security_group" "database" {
 
 # Compute Security Group
 resource "aws_security_group" "compute" {
-  name_prefix = "${var.project_name}-${var.client_name}-compute-"
+  name_prefix = "${var.client_name}-compute"
   vpc_id      = aws_vpc.client.id
   description = "Security group for ${var.client_name} compute instances"
 
@@ -416,7 +432,7 @@ resource "aws_security_group" "compute" {
   }
 
   tags = merge(var.common_tags, {
-    Name    = "${var.project_name}-${var.client_name}-compute-sg"
+    Name    = "${var.client_name}-compute-sg"
     Purpose = "Compute Security"
     Layer   = "Compute"
     Client  = var.client_name
@@ -429,7 +445,7 @@ resource "aws_security_group" "compute" {
 
 # VPC Endpoints Security Group
 resource "aws_security_group" "vpc_endpoints" {
-  name_prefix = "${var.project_name}-${var.client_name}-vpc-endpoints-"
+  name_prefix = "${var.client_name}-vpc-endpoints"
   vpc_id      = aws_vpc.client.id
   description = "Security group for VPC endpoints"
 
@@ -450,7 +466,7 @@ resource "aws_security_group" "vpc_endpoints" {
   }
 
   tags = merge(var.common_tags, {
-    Name    = "${var.project_name}-${var.client_name}-vpc-endpoints-sg"
+    Name    = "${var.client_name}-vpc-endpoints-sg"
     Purpose = "VPC Endpoints Security"
     Layer   = "Foundation"
     Client  = var.client_name
@@ -477,7 +493,7 @@ resource "aws_vpc_endpoint" "s3" {
   )
 
   tags = merge(var.common_tags, {
-    Name    = "${var.project_name}-${var.client_name}-s3-endpoint"
+    Name    = "${var.client_name}-s3-endpoint"
     Purpose = "S3 VPC Endpoint for Cost Optimization"
     Layer   = "Foundation"
     Client  = var.client_name
@@ -494,7 +510,7 @@ resource "aws_vpc_endpoint" "ecr_dkr" {
   private_dns_enabled = true
 
   tags = merge(var.common_tags, {
-    Name    = "${var.project_name}-${var.client_name}-ecr-dkr-endpoint"
+    Name    = "${var.client_name}-ecr-dkr-endpoint"
     Purpose = "ECR Docker VPC Endpoint"
     Layer   = "Foundation"
     Client  = var.client_name
@@ -511,7 +527,7 @@ resource "aws_vpc_endpoint" "ecr_api" {
   private_dns_enabled = true
 
   tags = merge(var.common_tags, {
-    Name    = "${var.project_name}-${var.client_name}-ecr-api-endpoint"
+    Name    = "${var.client_name}-ecr-api-endpoint"
     Purpose = "ECR API VPC Endpoint"
     Layer   = "Foundation"
     Client  = var.client_name
@@ -531,7 +547,7 @@ resource "aws_flow_log" "vpc" {
   vpc_id          = aws_vpc.client.id
 
   tags = merge(var.common_tags, {
-    Name    = "${var.project_name}-${var.client_name}-vpc-flow-logs"
+    Name    = "${var.client_name}-vpc-flow-logs"
     Purpose = "VPC Traffic Flow Logging"
     Layer   = "Foundation"
     Client  = var.client_name
@@ -542,12 +558,12 @@ resource "aws_flow_log" "vpc" {
 resource "aws_cloudwatch_log_group" "vpc_flow_log" {
   count = var.enable_flow_logs ? 1 : 0
 
-  name              = "/aws/vpc/flowlogs/${var.project_name}-${var.client_name}-${var.region}"
+  name              = "/aws/vpc/flowlogs/${var.client_name}-${var.region}"
   retention_in_days = var.flow_log_retention_days
   skip_destroy      = true
 
   tags = merge(var.common_tags, {
-    Name    = "${var.project_name}-${var.client_name}-vpc-flow-logs"
+    Name    = "${var.client_name}-vpc-flow-logs"
     Purpose = "VPC Flow Logs Storage"
     Layer   = "Foundation"
     Client  = var.client_name
@@ -558,7 +574,7 @@ resource "aws_cloudwatch_log_group" "vpc_flow_log" {
 resource "aws_iam_role" "flow_log" {
   count = var.enable_flow_logs ? 1 : 0
 
-  name = "${var.project_name}-${var.client_name}-vpc-flow-log-role-${var.region}"
+  name = "${var.client_name}-vpc-flow-log-role-${var.region}"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -574,7 +590,7 @@ resource "aws_iam_role" "flow_log" {
   })
 
   tags = merge(var.common_tags, {
-    Name    = "${var.project_name}-${var.client_name}-vpc-flow-log-role"
+    Name    = "${var.client_name}-vpc-flow-log-role"
     Purpose = "VPC Flow Logs IAM Role"
     Layer   = "Foundation"
     Client  = var.client_name
@@ -585,7 +601,7 @@ resource "aws_iam_role" "flow_log" {
 resource "aws_iam_role_policy" "flow_log" {
   count = var.enable_flow_logs ? 1 : 0
 
-  name = "${var.project_name}-${var.client_name}-vpc-flow-log-policy"
+  name = "${var.client_name}-vpc-flow-log-policy"
   role = aws_iam_role.flow_log[0].id
 
   policy = jsonencode({

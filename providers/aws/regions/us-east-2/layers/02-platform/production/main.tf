@@ -24,37 +24,63 @@ terraform {
   }
 }
 
-# TAGGING STRATEGY: Provider-level default tags for consistency
-# All AWS resources will automatically inherit tags from provider configuration
+# ============================================================================
+# Centralized Tagging Configuration
+# ============================================================================
+
+module "tags" {
+  source = "../../../../../../../modules/tagging"
+  
+  # Core configuration
+  environment      = var.environment
+  layer_name       = "platform"
+  region           = var.region
+  
+  # Layer-specific configuration
+  layer_purpose    = "EKS Cluster Management"
+  deployment_phase = "Phase-2"
+  
+  # Infrastructure classification
+  critical_infrastructure = "true"
+  backup_required        = "true"
+  security_level         = "Critical"  # EKS is critical
+  
+  # Cost management (FinOps aligned)
+  cost_center      = "IT-Infrastructure"
+  billing_group    = "Platform-Engineering"
+  chargeback_code  = "EST1-PLATFORM-001"
+  resource_type    = "EKS"
+  
+  # Operational settings (Enhanced for industrial standards)
+  sla_tier           = "Platinum"  # EKS needs highest SLA
+  monitoring_level   = "Premium"
+  maintenance_window = "Sunday-02:00-04:00-UTC"
+  dr_tier            = "Tier-1"  # Mission Critical
+  rpo                = "1h"
+  rto                = "1h"
+  patch_group        = "Critical"
+  runbook_url        = "https://wiki.company.com/runbooks/eks-platform"
+  incident_contact   = "platform-oncall@company.com"
+  
+  # Data management
+  data_classification  = "Internal"
+  data_residency       = "US"
+  encryption_required  = "true"
+  
+  # Governance
+  compliance_framework = "SOC2-ISO27001"
+  
+  # Platform-specific
+  kubernetes_version = var.cluster_version
+  terraform_module   = "modules/eks-platform"
+}
 
 provider "aws" {
   region = var.region
 
+  # Use minimal_tags to stay under AWS 50-tag limit
   default_tags {
-    tags = {
-      # Core identification
-      Project         = "${var.region}-${var.environment}"
-      Environment     = var.environment
-      Region          = var.region
-      
-      # Operational
-      ManagedBy       = "Terraform"
-      Layer           = "Platform"
-      DeploymentPhase = "Phase-2"
-      
-      # Governance
-      CriticalInfra   = "true"
-      BackupRequired  = "true"
-      SecurityLevel   = "High"
-      
-      # Cost Management
-      CostCenter      = "IT-Infrastructure"
-      BillingGroup    = "Platform-Engineering"
-      
-      # Platform specific
-      ClusterRole     = "Primary"
-      PlatformType    = "EKS"
-    }
+    tags = module.tags.minimal_tags
   }
 }
 
@@ -152,7 +178,6 @@ module "client_eks_clusters" {
   source = "../../../../../../../modules/eks-platform"
 
   # Core configuration
-  # project_name removed - using client-centric naming
   environment  = var.environment
   region       = var.region
 

@@ -1,20 +1,12 @@
 # =============================================================================
-# Backend Configuration: platform Layer - us-east-2 production
+# Backend Configuration: Layer 02-Platform
 # =============================================================================
-# Auto-generated backend configuration for consistent team usage
-# Initialize with: terraform init -backend-config=backend.hcl
+# Usage: terraform init -backend-config=backend.hcl
 # =============================================================================
 
-bucket = "ohio-01-terraform-state-production"
-key    = "providers/aws/regions/us-east-2/layers/02-platform/production/terraform.tfstate"
-region = "us-east-2"
-encrypt = true
-dynamodb_table = "terraform-locks-us-east"
-
-# =============================================================================
-# Backend Configuration Notes:
-# - This file is version controlled for team consistency
-# - No user-specific configuration required
-# - Works across all platforms (Linux, macOS, Windows)
-# - State is stored in S3 with DynamoDB locking
-# =============================================================================
+bucket         = "terraform-state-us-east-2-production"
+key            = "us-east-2/02-platform/production/terraform.tfstate"
+region         = "us-east-2"
+dynamodb_table = "terraform-locks-us-east-2-production"
+encrypt        = true
+kms_key_id     = "alias/terraform-state-production"

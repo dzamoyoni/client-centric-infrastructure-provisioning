@@ -81,33 +81,48 @@ module "tags" {
   source = "../../../../../../../modules/tagging"
   
   # Core configuration
-  # project_name removed - using client-centric naming
   environment  = var.environment
   layer_name   = "observability"
   region       = var.region
   
   # Layer-specific configuration
-  layer_purpose    = "Monitoring, Logging, Tracing, and Alerting"
-  deployment_phase = "Phase-5"  # After shared services
+  layer_purpose    = "Monitoring, Logging, Tracing, and Alerting (Prometheus, Grafana, Loki, Tempo)"
+  deployment_phase = "Phase-6"
   
   # Infrastructure classification
   critical_infrastructure = "true"
-  backup_required         = "true"
+  backup_required         = "daily"  # Observability data needs daily backups
   security_level          = "High"
   
-  # Cost management
-  cost_center     = "IT-Infrastructure"
-  owner           = "Platform-Engineering"
-  chargeback_code = "OBS1-MONITORING-001"
+  # Cost management (FinOps aligned)
+  cost_center      = "IT-Infrastructure"
+  owner            = "Platform-Engineering"
+  billing_group    = "Platform-Engineering"
+  chargeback_code  = "EST1-OBSERVABILITY-001"
+  resource_type    = "Monitoring"
   
-  # Operational settings
-  sla_tier           = "Gold"
-  monitoring_level   = "Enhanced"
-  maintenance_window = "Sunday-02:00-04:00-UTC"
+  # Operational settings (Enhanced for industrial standards)
+  sla_tier           = "Platinum"  # Observability is critical for operations
+  monitoring_level   = "Premium"  # Meta-monitoring
+  maintenance_window = "Sunday-05:00-07:00-UTC"  # After all other layers
+  dr_tier            = "Tier-1"  # Mission Critical for incident response
+  rpo                = "1h"
+  rto                = "1h"
+  patch_group        = "Critical"
+  runbook_url        = "https://wiki.company.com/runbooks/observability-stack"
+  incident_contact   = "platform-oncall@company.com"
+  
+  # Data management
+  data_classification  = "Internal"
+  data_residency       = "US"
+  encryption_required  = "true"
+  data_retention       = "90-days"  # Observability data retention
   
   # Governance
   compliance_framework = "SOC2-ISO27001"
-  data_classification  = "Internal"
+  
+  # Observability-specific
+  terraform_module = "modules/observability-per-client"
 }
 
 # ============================================================================
@@ -117,8 +132,9 @@ module "tags" {
 provider "aws" {
   region = var.region
 
+  # Use minimal_tags to stay under AWS 50-tag limit
   default_tags {
-    tags = module.tags.standard_tags
+    tags = module.tags.minimal_tags
   }
 }
 

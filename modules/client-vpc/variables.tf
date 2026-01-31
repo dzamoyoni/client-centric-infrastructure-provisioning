@@ -128,3 +128,19 @@ variable "flow_log_retention_days" {
     error_message = "Flow log retention days must be a valid CloudWatch Logs retention period."
   }
 }
+
+# ============================================================================
+# Transit Gateway Configuration
+# ============================================================================
+
+variable "enable_nat_gateway" {
+  description = "Enable NAT Gateways for internet egress. Set to false when using Transit Gateway with centralized egress VPC."
+  type        = bool
+  default     = true
+}
+
+variable "transit_gateway_id" {
+  description = "Transit Gateway ID for centralized egress routing. Required if enable_nat_gateway is false."
+  type        = string
+  default     = null
+}

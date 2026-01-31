@@ -1,12 +1,9 @@
-# Foundation Layer - us-east-2 Production
-# CRITICAL INFRASTRUCTURE: Per-Client VPCs, Subnets, NAT Gateways, VPN
-# DO NOT DELETE OR MODIFY WITHOUT PROPER AUTHORIZATION
+# Foundation Layer
+# CRITICAL INFRASTRUCTURE: VPCs, Subnets, NAT Gateways, VPN
 #
 # PER-CLIENT VPC ARCHITECTURE:
 # - Each client gets a dedicated VPC with unique CIDR
 # - Complete network isolation between clients
-# - Client VPCs defined in cidr-registry.yaml (root of repo)
-# - Zero hardcoding - pure data-driven infrastructure
 # - Add/remove clients by editing clients.auto.tfvars only
 
 terraform {
@@ -44,26 +41,40 @@ module "tags" {
   backup_required        = "true"
   security_level         = "High"
   
-  # Cost management
+  # Cost management (FinOps aligned)
   cost_center      = "IT-Infrastructure"
   billing_group    = "Platform-Engineering"
   chargeback_code  = "EST1-FOUNDATION-001"
+  resource_type    = "VPC"
   
-  # Operational settings
+  # Operational settings (Enhanced for industrial standards)
   sla_tier           = "Gold"
   monitoring_level   = "Enhanced"
-  maintenance_window = "Sunday-02:00-04:00-UTC"
+  maintenance_window = "Sunday-00:00-04:00-UTC"
+  dr_tier            = "Tier-2"  # Business Critical
+  rpo                = "4h"
+  rto                = "4h"
+  patch_group        = "Critical"
+  runbook_url        = "https://wiki.company.com/runbooks/network-foundation"
+  incident_contact   = "platform-oncall@company.com"
+  
+  # Data management
+  data_classification  = "Internal"
+  data_residency       = "US"
+  encryption_required  = "true"
   
   # Governance
   compliance_framework = "SOC2-ISO27001"
-  data_classification  = "Internal"
+  terraform_module     = "modules/client-vpc"
 }
 
 provider "aws" {
   region = var.region
 
+  # Use minimal_tags to stay under AWS 50-tag limit
+  # default_tags are automatically applied to ALL resources
   default_tags {
-    tags = module.tags.standard_tags
+    tags = module.tags.minimal_tags
   }
 }
 
@@ -99,11 +110,15 @@ module "client_vpcs" {
   # Security configuration
   database_ports = each.value.security.database_ports
   custom_ports   = each.value.security.custom_ports
-
+  
   # VPC Flow Logs
   enable_flow_logs        = true
   flow_log_retention_days = 30
-
+  
+  # Transit Gateway Configuration (NAT disabled - using centralized egress)
+  enable_nat_gateway = false
+  transit_gateway_id = null  # Set by Layer 01.5 via route resources
+  
   # Tags
   common_tags = local.client_tags[each.key]
 }
@@ -165,6 +180,33 @@ module "client_vpn" {
 }
 
 # ============================================================================
+# Egress VPC - Centralized NAT Gateway for All VPCs
+# ============================================================================
+# Purpose: Centralized internet egress for all VPCs via Transit Gateway
+# Cost Savings: ~53-70% vs NAT-per-VPC ($126/month vs $270/month for 3 clients)
+# Architecture: All VPCs route to Transit Gateway → Egress VPC → NAT → Internet
+
+module "egress_vpc" {
+  source = "../../../../../../../modules/egress-vpc"
+  
+  project_name       = "Org Name"  # Organization name
+  region             = var.region
+  vpc_cidr           = "10.255.0.0/16"  # Dedicated CIDR for egress VPC
+  availability_zones = local.availability_zones
+  common_tags        = module.tags.standard_tags
+  
+  # High Availability with 2 NAT Gateways (one per AZ)
+  enable_high_availability = true
+  
+  # VPC Endpoints for cost optimization
+  enable_vpc_endpoints = true
+  
+  # Flow Logs for security monitoring
+  enable_flow_logs        = true
+  flow_log_retention_days = 7
+}
+
+# ============================================================================
 # Locals - Client Processing & Tagging
 # ============================================================================
 
@@ -189,21 +231,19 @@ locals {
   # Comprehensive tags for critical infrastructure
   critical_tags = module.tags.comprehensive_tags
   
-  # Generate client-specific tags dynamically
+  # Generate client-specific tags dynamically (sanitized for AWS)
+  # NOTE: Do NOT include minimal_tags here - they're already in provider default_tags
+  # This avoids tag duplication and keeps total under 50-tag limit
   client_tags = {
-    for name, config in local.enabled_clients : name => merge(
-      module.tags.standard_tags,
-      {
-        Client         = name
-        ClientCode     = config.client_code
-        ClientTier     = config.tier
-        VpcCidr        = config.network.vpc_cidr
-        TenantType     = "Production"
-        Industry       = config.metadata.industry
-        CostCenter     = config.metadata.cost_center
-        BusinessUnit   = config.metadata.business_unit
-        Compliance     = join(",", config.metadata.compliance)
-      }
-    )
+    for name, config in local.enabled_clients : name => {
+      Client         = name
+      ClientCode     = config.client_code
+      ClientTier     = config.tier
+      VpcCidr        = config.network.vpc_cidr
+      Industry       = replace(config.metadata.industry, " ", "-")
+      CostCenter     = config.metadata.cost_center
+      BusinessUnit   = replace(config.metadata.business_unit, " ", "-")
+      Compliance     = join("+", config.metadata.compliance)
+    }
   }
 }

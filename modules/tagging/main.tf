@@ -1,5 +1,5 @@
 # ============================================================================
-# Centralized Tagging Module - Enterprise Standards
+# Centralized Tagging Module
 # ============================================================================
 # This module provides consistent, scalable tagging across all infrastructure
 # layers with support for:
@@ -25,12 +25,23 @@ terraform {
 # ============================================================================
 
 locals {
-  # Sanitize tag values to ensure AWS compliance
-  # Remove commas, limit length, ensure valid characters
-  # Use client_name if project_name is empty (client-centric architecture)
-  effective_project_name = var.project_name != "" ? var.project_name : (var.client_name != "" ? var.client_name : "${var.region}-${var.environment}")
+  # AWS Tag Limits (Industrial Standards)
+  aws_tag_limit         = 50  # AWS hard limit
+  safe_tag_limit        = 45  # Safe limit with buffer
+  tag_key_max_length    = 128 # AWS limit for tag keys
+  tag_value_max_length  = 256 # AWS limit for tag values
   
-  sanitize_value = {
+  # Sanitize tag values to ensure AWS compliance
+  # Remove commas, newlines, tabs, control characters, limit length, ensure valid characters
+  # Use client_name if project_name is empty (client-centric architecture)
+  effective_project_name = var.project_name != "" ? var.project_name : (var.client_name != "" ? var.client_name : "unknown")
+  
+  # Enhanced sanitization function for tag values
+  # Removes: invalid characters (commas, semicolons, ampersands, etc.)
+  # Replaces: spaces, slashes, colons with hyphens
+  # Limits: 256 characters (AWS limit)
+  # AWS allows: letters, numbers, spaces, and + - = . _ : / @
+  sanitize_tag_value = { 
     for k, v in {
       organization_name    = var.organization_name
       project_name        = local.effective_project_name
@@ -44,63 +55,102 @@ locals {
       deployment_method  = var.deployment_method
       chargeback_code    = var.chargeback_code
       compliance_framework = var.compliance_framework
-    } : k => v != null ? substr(replace(replace(v, ",", "-"), "  ", " "), 0, 255) : ""
+      runbook_url        = var.runbook_url
+      incident_contact   = var.incident_contact
+    } : k => v != null ? trimspace(substr(
+      replace(
+        replace(
+          replace(
+            replace(
+              replace(
+                replace(
+                  replace(
+                    replace(v, ",", "-"),
+                    ";", "-"
+                  ),
+                  "&", "and"
+                ),
+                "\n", "-"
+              ),
+              "\t", "-"
+            ),
+            "  ", " "
+          ),
+          " ", "-"
+        ),
+        "--", "-"
+      ),
+      0,
+      local.tag_value_max_length
+    )) : ""
   }
 
   # Standard organizational metadata
   organization_tags = {
-    Organization    = local.sanitize_value["organization_name"]
-    Project         = local.sanitize_value["project_name"]
-    Portfolio       = local.sanitize_value["portfolio_name"]
-    BusinessUnit    = local.sanitize_value["business_unit"]
-    CostCenter      = local.sanitize_value["cost_center"]
-    Owner           = local.sanitize_value["owner"]
-    ContactEmail    = local.sanitize_value["contact_email"]
+    Organization    = local.sanitize_tag_value["organization_name"]
+    Project         = local.sanitize_tag_value["project_name"]
+    Portfolio       = local.sanitize_tag_value["portfolio_name"]
+    BusinessUnit    = local.sanitize_tag_value["business_unit"]
+    CostCenter      = local.sanitize_tag_value["cost_center"]
+    Owner           = local.sanitize_tag_value["owner"]
+    ContactEmail    = local.sanitize_tag_value["contact_email"]
   }
 
   # Infrastructure metadata (account_id omitted to avoid circular dependencies)
   infrastructure_tags = {
     ManagedBy           = "Terraform"
     TerraformModule     = var.terraform_module
+    TerraformVersion    = var.terraform_version
     TerraformWorkspace  = terraform.workspace
     ProvisionedBy       = var.provisioned_by
+    DeploymentPipeline  = var.deployment_pipeline
+    GitCommit           = var.git_commit
     Region              = var.region
-    AvailabilityZones   = var.availability_zones != null ? join(",", var.availability_zones) : ""
     AccountAlias        = var.account_alias
   }
 
   # Environment and deployment metadata
+  # NOTE: Timestamps removed to prevent state churn
   environment_tags = {
     Environment         = var.environment
     EnvironmentType     = var.environment_type
     Layer               = var.layer_name
-    LayerPurpose        = local.sanitize_value["layer_purpose"]
-    DeploymentPhase     = local.sanitize_value["deployment_phase"]
-    DeploymentMethod    = local.sanitize_value["deployment_method"]
-    DeploymentDate      = var.deployment_date != "" ? var.deployment_date : formatdate("YYYY-MM-DD", timestamp())
+    LayerPurpose        = local.sanitize_tag_value["layer_purpose"]
+    DeploymentPhase     = local.sanitize_tag_value["deployment_phase"]
+    DeploymentMethod    = local.sanitize_tag_value["deployment_method"]
+    DeploymentDate      = var.deployment_date  # Must be provided externally, no timestamp()
     Version             = var.infrastructure_version
   }
 
-  # Operational metadata
+  # Operational metadata (Enhanced for industrial standards)
   operational_tags = {
     CriticalInfra       = var.critical_infrastructure
     BackupRequired      = var.backup_required
     SecurityLevel       = var.security_level
     ComplianceLevel     = var.compliance_level
     DataClassification  = var.data_classification
+    DataResidency       = var.data_residency
+    EncryptionRequired  = var.encryption_required
     MaintenanceWindow   = var.maintenance_window
     SLA                 = var.sla_tier
     MonitoringLevel     = var.monitoring_level
+    DRTier              = var.dr_tier
+    RPO                 = var.rpo
+    RTO                 = var.rto
+    PatchGroup          = var.patch_group
+    RunbookUrl          = local.sanitize_tag_value["runbook_url"]
+    IncidentContact     = local.sanitize_tag_value["incident_contact"]
   }
 
-  # Cost management tags
+  # Cost management tags (FinOps Foundation aligned)
   cost_tags = {
-    BillingGroup        = local.sanitize_value["owner"]
-    ChargebackCode      = local.sanitize_value["chargeback_code"]
+    BillingGroup        = local.sanitize_tag_value["owner"]
+    ChargebackCode      = local.sanitize_tag_value["chargeback_code"]
     Budget              = var.budget_name
     CostOptimization    = var.cost_optimization_enabled
     AutoScalingEnabled  = var.auto_scaling_enabled
     InstanceSchedule    = var.instance_schedule
+    ResourceType        = var.resource_type
   }
 
   # Client/tenant-specific tags (for multi-tenant environments)
@@ -124,12 +174,13 @@ locals {
   } : {}
 
   # Compliance and governance tags
+  # NOTE: Timestamps removed to prevent Terraform state churn
+  # Timestamps should be managed via CI/CD pipeline or external systems
   governance_tags = {
     CreatedBy           = var.created_by
-    CreationDate        = var.creation_date != "" ? var.creation_date : formatdate("YYYY-MM-DD", timestamp())
-    LastModified        = formatdate("YYYY-MM-DD", timestamp())
+    CreationDate        = var.creation_date  # Must be provided externally
     ChangeTicket        = var.change_ticket
-    ComplianceFramework = local.sanitize_value["compliance_framework"]
+    ComplianceFramework = local.sanitize_tag_value["compliance_framework"]
     DataRetention       = var.data_retention
     ArchivePolicy       = var.archive_policy
   }
@@ -153,31 +204,47 @@ locals {
     if v != null && v != ""
   }
 
+  # Layer-specific tag definitions (extensible via variables)
+  # Merged with var.layer_specific_tags for custom additions
+  default_layer_tags = var.layer_name == "foundation" ? {
+    NetworkTier       = "Foundation"
+    VPCPurpose        = "Client-Dedicated"
+    NATConfiguration  = "HighAvailability"
+  } : var.layer_name == "platform" ? {
+    ClusterRole       = "Primary"
+    KubernetesVersion = var.kubernetes_version
+    NodeGroupType     = "Mixed"
+  } : var.layer_name == "observability" ? {
+    ObservabilityStack = "FluentBit-Tempo-Prometheus"
+    LoggingEnabled     = "true"
+    TracingEnabled     = "true"
+    MetricsEnabled     = "true"
+  } : var.layer_name == "database" || var.layer_name == "database-layer" ? {
+    DatabaseEngine     = var.database_engine
+    BackupStrategy     = var.backup_strategy
+    EncryptionEnabled  = "true"
+  } : {}
+
   # Create layer-specific tag variations
   layer_specific_tags = merge(
     local.filtered_tags,
-    var.layer_name == "foundation" ? {
-      NetworkTier       = "Foundation"
-      VPCPurpose        = "Tenant-EKS"
-      NATConfiguration  = "HighAvailability"
-    } : {},
-    var.layer_name == "platform" ? {
-      ClusterRole       = "Primary"
-      KubernetesVersion = var.kubernetes_version
-      NodeGroupType     = "Mixed"
-    } : {},
-    var.layer_name == "observability" ? {
-      ObservabilityStack = "FluentBit-Tempo-Prometheus"
-      LoggingEnabled     = "true"
-      TracingEnabled     = "true"
-      MetricsEnabled     = "true"
-    } : {},
-    var.layer_name == "database" ? {
-      DatabaseEngine     = var.database_engine
-      BackupStrategy     = var.backup_strategy
-      EncryptionEnabled  = "true"
-    } : {}
+    local.default_layer_tags,
+    var.layer_specific_tags  # Allow custom layer tags
   )
+
+  # Tag count validation (AWS limit is 50, safe limit is 45)
+  tag_count = length(local.layer_specific_tags)
+  tag_limit_exceeded = local.tag_count > local.safe_tag_limit
+  
+  # Tag validation results
+  tag_validation = {
+    total_tags         = local.tag_count
+    aws_limit          = local.aws_tag_limit
+    safe_limit         = local.safe_tag_limit
+    exceeds_safe_limit = local.tag_limit_exceeded
+    buffer_remaining   = local.safe_tag_limit - local.tag_count
+    status             = local.tag_limit_exceeded ? "WARNING: Tag count exceeds safe limit" : "OK"
+  }
 }
 
 # ============================================================================
@@ -261,5 +328,81 @@ output "tag_summary" {
     tag_categories   = ["organization", "infrastructure", "environment", "operational", "cost", "governance"]
     has_client_tags  = length(local.client_tags) > 0
     compliance_level = var.compliance_level
+  }
+}
+
+# ============================================================================
+# Enhanced Outputs for Industrial Standards
+# ============================================================================
+
+# Cost allocation tags (AWS Cost Explorer / FinOps)
+output "cost_allocation_tags" {
+  description = "Essential tags for AWS Cost Explorer and cost allocation"
+  value = merge(
+    {
+      CostCenter  = var.cost_center
+      Environment = var.environment
+      Owner       = var.owner
+      ManagedBy   = "Terraform"
+    },
+    var.client_name != "" ? { Client = var.client_name } : {},
+    var.application_name != "" ? { Application = var.application_name } : {}
+  )
+}
+
+# Required tags for compliance validation
+output "required_tags" {
+  description = "Minimum required tags that must be present on all resources"
+  value = {
+    Environment = var.environment
+    CostCenter  = var.cost_center
+    Owner       = var.owner
+    ManagedBy   = "Terraform"
+    Layer       = var.layer_name
+  }
+}
+
+# Tag compliance and validation status
+output "tag_compliance" {
+  description = "Tag compliance validation results"
+  value = local.tag_validation
+}
+
+# Resource-type specific tags
+output "resource_type_tags" {
+  description = "Tags specific to resource type for filtering"
+  value = var.resource_type != "" ? merge(
+    local.layer_specific_tags,
+    {
+      ResourceType = var.resource_type
+    }
+  ) : local.layer_specific_tags
+}
+
+# Security and compliance tags
+output "security_tags" {
+  description = "Security-focused tags for TBAC (Tag-Based Access Control)"
+  value = {
+    SecurityLevel       = var.security_level
+    DataClassification  = var.data_classification
+    ComplianceFramework = var.compliance_framework
+    EncryptionRequired  = var.encryption_required
+    DataResidency       = var.data_residency
+  }
+}
+
+# Operational tags for automation
+output "operational_tags" {
+  description = "Tags for operational automation and runbooks"
+  value = {
+    MaintenanceWindow = var.maintenance_window
+    BackupRequired    = var.backup_required
+    PatchGroup        = var.patch_group
+    DRTier            = var.dr_tier
+    RPO               = var.rpo
+    RTO               = var.rto
+    MonitoringLevel   = var.monitoring_level
+    RunbookUrl        = var.runbook_url
+    IncidentContact   = var.incident_contact
   }
 }
