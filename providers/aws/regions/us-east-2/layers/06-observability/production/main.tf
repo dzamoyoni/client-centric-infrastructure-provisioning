@@ -6,6 +6,8 @@
 # - S3 Storage Backend: Observability data stored in client-specific S3 buckets
 # - Production HA: Multi-replica setup with anti-affinity per client
 # - Complete Isolation: No cross-client data or metrics sharing
+# Client config: Centralized in ROOT /clients.auto.tfvars
+# Deploy: terraform apply -var-file="../../../../../../clients.auto.tfvars"
 # ============================================================================
 
 terraform {
@@ -74,55 +76,44 @@ data "aws_caller_identity" "current" {}
 data "aws_region" "current" {}
 
 # ============================================================================
-# Enterprise Tagging Standards
+# Layer Metadata - From Shared Config Module
+# ============================================================================
+
+module "layer_config" {
+  source   = "../../../../../../../modules/shared-config"
+  layer_id = "06-observability"
+}
+
+# ============================================================================
+# Tagging Configuration
 # ============================================================================
 
 module "tags" {
   source = "../../../../../../../modules/tagging"
   
   # Core configuration
-  environment  = var.environment
-  layer_name   = "observability"
-  region       = var.region
+  environment = var.environment
+  region      = var.region
   
-  # Layer-specific configuration
-  layer_purpose    = "Monitoring, Logging, Tracing, and Alerting (Prometheus, Grafana, Loki, Tempo)"
-  deployment_phase = "Phase-6"
-  
-  # Infrastructure classification
-  critical_infrastructure = "true"
-  backup_required         = "daily"  # Observability data needs daily backups
-  security_level          = "High"
-  
-  # Cost management (FinOps aligned)
-  cost_center      = "IT-Infrastructure"
-  owner            = "Platform-Engineering"
-  billing_group    = "Platform-Engineering"
-  chargeback_code  = "EST1-OBSERVABILITY-001"
-  resource_type    = "Monitoring"
-  
-  # Operational settings (Enhanced for industrial standards)
-  sla_tier           = "Platinum"  # Observability is critical for operations
-  monitoring_level   = "Premium"  # Meta-monitoring
-  maintenance_window = "Sunday-05:00-07:00-UTC"  # After all other layers
-  dr_tier            = "Tier-1"  # Mission Critical for incident response
-  rpo                = "1h"
-  rto                = "1h"
-  patch_group        = "Critical"
-  runbook_url        = "https://wiki.company.com/runbooks/observability-stack"
-  incident_contact   = "platform-oncall@company.com"
-  
-  # Data management
-  data_classification  = "Internal"
-  data_residency       = "US"
-  encryption_required  = "true"
-  data_retention       = "90-days"  # Observability data retention
-  
-  # Governance
-  compliance_framework = "SOC2-ISO27001"
+  # Layer-specific from shared-config module
+  layer_name         = module.layer_config.layer_name
+  layer_purpose      = module.layer_config.layer_purpose
+  deployment_phase   = module.layer_config.deployment_phase
+  security_level     = module.layer_config.security_level
+  sla_tier           = module.layer_config.sla_tier
+  monitoring_level   = module.layer_config.monitoring_level
+  maintenance_window = module.layer_config.maintenance_window
+  dr_tier            = module.layer_config.dr_tier
+  rpo                = module.layer_config.rpo
+  rto                = module.layer_config.rto
+  patch_group        = module.layer_config.patch_group
+  resource_type      = module.layer_config.resource_type
+  chargeback_code    = module.layer_config.chargeback_code
+  runbook_url        = module.layer_config.runbook_url
+  incident_contact   = module.layer_config.incident_contact
   
   # Observability-specific
-  terraform_module = "modules/observability-per-client"
+  data_retention = "90-days"
 }
 
 # ============================================================================
@@ -149,7 +140,7 @@ locals {
   # Platform layer outputs - per-client EKS clusters
   client_clusters = data.terraform_remote_state.platform.outputs.client_clusters
   
-  # Filter enabled clients
+  # Filter enabled clients from CENTRALIZED ROOT /clients.auto.tfvars
   enabled_clients = {
     for name, config in var.clients : name => config
     if config.enabled

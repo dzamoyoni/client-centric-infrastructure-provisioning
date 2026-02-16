@@ -17,8 +17,6 @@ cluster_version = "1.31"
 # Management Access
 enable_public_access = true
 management_cidr_blocks = [
-  "178.162.141.130/32",
-  "165.90.14.138/32",
   "41.72.206.78/32",
   "102.217.4.85/32"
 ]

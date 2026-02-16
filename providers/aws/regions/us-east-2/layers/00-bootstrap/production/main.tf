@@ -7,7 +7,8 @@
 #   3. IAM roles for observability services
 #
 # Dependencies: None (bootstrap layer runs first)
-# Deploys to: AWS us-east-2
+# Client config: Centralized in ROOT /clients.auto.tfvars
+# Deploy: terraform apply -var-file="../../../../../../clients.auto.tfvars"
 # Backend: Local (cannot use S3 backend for bootstrap layer - chicken-egg problem)
 # ============================================================================
 
@@ -52,7 +53,7 @@ data "aws_region" "current" {}
 # ============================================================================
 
 locals {
-  # Enabled clients (from clients.auto.tfvars)
+  # Enabled clients from CENTRALIZED ROOT /clients.auto.tfvars
   enabled_clients = { for k, v in var.clients : k => v if v.enabled }
 
   # Account information
@@ -94,7 +95,16 @@ locals {
 }
 
 # ============================================================================
-# Tagging Module (Industrial Standards)
+# Layer Metadata - From Shared Config Module
+# ============================================================================
+
+module "layer_config" {
+  source   = "../../../../../../../modules/shared-config"
+  layer_id = "00-bootstrap"
+}
+
+# ============================================================================
+# Tagging Configuration 
 # ============================================================================
 
 module "tags" {
@@ -104,30 +114,21 @@ module "tags" {
   organization_name = var.organization_name
   environment       = var.environment
   region            = var.region
-  layer_name        = "bootstrap"
-  layer_purpose     = "S3 State & Observability Buckets"
 
-  # Infrastructure metadata
-  terraform_module = "layers/00-bootstrap"
-  account_id       = local.account_id
-  provisioned_by   = "Terraform"
-
-  # Operational tags for bootstrap layer
-  dr_tier        = var.dr_tier
-  rpo            = var.rpo
-  rto            = var.rto
-  resource_type  = var.resource_type
-  security_level = var.security_level
-
-  # Cost and compliance
-  cost_center         = var.cost_center
-  business_unit       = var.business_unit
-  owner               = var.owner
-  contact_email       = var.contact_email
-  backup_required     = var.backup_required
-  data_classification = var.data_classification
-
-  # Bootstrap-specific tags
-  critical_infrastructure = var.critical_infrastructure
-  deployment_phase        = var.deployment_phase
+  # Layer-specific from shared-config module
+  layer_name         = module.layer_config.layer_name
+  layer_purpose      = module.layer_config.layer_purpose
+  deployment_phase   = module.layer_config.deployment_phase
+  security_level     = module.layer_config.security_level
+  sla_tier           = module.layer_config.sla_tier
+  monitoring_level   = module.layer_config.monitoring_level
+  maintenance_window = module.layer_config.maintenance_window
+  dr_tier            = module.layer_config.dr_tier
+  rpo                = module.layer_config.rpo
+  rto                = module.layer_config.rto
+  patch_group        = module.layer_config.patch_group
+  resource_type      = module.layer_config.resource_type
+  chargeback_code    = module.layer_config.chargeback_code
+  runbook_url        = module.layer_config.runbook_url
+  incident_contact   = module.layer_config.incident_contact
 }

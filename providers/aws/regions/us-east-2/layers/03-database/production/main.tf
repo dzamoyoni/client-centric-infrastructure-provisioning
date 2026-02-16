@@ -1,7 +1,9 @@
 # ============================================================================
-# Layer 3: Database Layer - US-East-2 Production
+# Layer 3: Database Layer
 # ============================================================================
 # High-Availability PostgreSQL databases with master-replica setup for multi-client architecture
+# Client config: Centralized in ROOT /clients.auto.tfvars
+# Deploy: terraform apply -var-file="../../../../../../clients.auto.tfvars"
 # Provides dedicated, secured database instances with enterprise-grade features:
 # - Master-Replica PostgreSQL with automatic replication
 # - Multi-volume storage strategy (data, WAL, backup)
@@ -25,69 +27,61 @@ terraform {
 }
 
 # ============================================================================
-# Centralized Tagging Configuration
+# Layer Metadata - From Shared Config Module
+# ============================================================================
+
+module "layer_config" {
+  source   = "../../../../../../../modules/shared-config"
+  layer_id = "03-database"
+}
+
+# ============================================================================
+# Simplified Tagging Configuration (85% reduction)
 # ============================================================================
 
 module "tags" {
   source = "../../../../../../../modules/tagging"
   
-  # Core configuration
-  environment      = var.environment
-  layer_name       = "database"
-  region           = var.region
+  # Core parameters
+  environment = var.environment
+  region      = var.region
   
-  # Layer-specific configuration
-  layer_purpose    = "PostgreSQL Database Management"
-  deployment_phase = "Phase-3"
-  
-  # Infrastructure classification
-  critical_infrastructure = "true"
-  backup_required        = "daily"  # Databases need daily backups
-  security_level         = "Critical"  # Databases are critical
-  
-  # Cost management (FinOps aligned)
-  cost_center      = "IT-Infrastructure"
-  billing_group    = "Platform-Engineering"
-  chargeback_code  = "EST1-DATABASE-001"
-  resource_type    = "RDS"
-  
-  # Operational settings (Enhanced for industrial standards)
-  sla_tier           = "Platinum"  # Databases need highest SLA
-  monitoring_level   = "Premium"
-  maintenance_window = "Sunday-03:00-05:00-UTC"  # After platform layer
-  dr_tier            = "Tier-1"  # Mission Critical
-  rpo                = "1h"  # 1-hour recovery point
-  rto                = "1h"  # 1-hour recovery time
-  patch_group        = "Critical"
-  runbook_url        = "https://wiki.company.com/runbooks/postgresql-database"
-  incident_contact   = "database-oncall@company.com"
-  
-  # Data management (databases handle sensitive data)
-  data_classification  = "Confidential"  # Customer data
-  data_residency       = "US"
-  encryption_required  = "true"
-  
-  # Governance
-  compliance_framework = "SOC2-ISO27001-PCI-DSS"
-  data_retention       = "7-years"
+  # Layer-specific from shared-config module
+  layer_name         = module.layer_config.layer_name
+  layer_purpose      = module.layer_config.layer_purpose
+  deployment_phase   = module.layer_config.deployment_phase
+  security_level     = module.layer_config.security_level
+  sla_tier           = module.layer_config.sla_tier
+  monitoring_level   = module.layer_config.monitoring_level
+  maintenance_window = module.layer_config.maintenance_window
+  dr_tier            = module.layer_config.dr_tier
+  rpo                = module.layer_config.rpo
+  rto                = module.layer_config.rto
+  patch_group        = module.layer_config.patch_group
+  resource_type      = module.layer_config.resource_type
+  chargeback_code    = module.layer_config.chargeback_code
+  runbook_url        = module.layer_config.runbook_url
+  incident_contact   = module.layer_config.incident_contact
   
   # Database-specific
-  database_engine  = "postgresql"
-  backup_strategy  = "daily"
-  terraform_module = "modules/postgres-ec2"
+  database_engine       = "postgresql"
+  backup_strategy       = "daily"
+  backup_required       = "daily"
+  data_classification   = "Confidential"
+  compliance_framework  = "SOC2-ISO27001-PCI-DSS"
+  data_retention        = "3-years"
 }
 
 provider "aws" {
   region = var.region
 
-  # Use minimal_tags to stay under AWS 50-tag limit
   default_tags {
     tags = module.tags.minimal_tags
   }
 }
 
 # DATA SOURCES - Foundation Layer Outputs
-# Note: Platform layer (EKS) is NOT required - database can deploy independently
+# Note:  database can deploy independently
 data "terraform_remote_state" "foundation" {
   backend = "s3"
   config = {
@@ -133,7 +127,7 @@ locals {
   # Platform layer outputs - per-client EKS clusters (OPTIONAL - may not exist)
   client_clusters = try(data.terraform_remote_state.platform.outputs.client_clusters, {})
   
-  # Filter enabled clients only
+  # Filter enabled clients from CENTRALIZED ROOT /clients.auto.tfvars
   enabled_clients = {
     for name, config in var.clients : name => config
     if config.enabled
@@ -181,7 +175,6 @@ locals {
 }
 
 # VALIDATION CHECKS
-# Note: Platform layer (EKS) is NOT validated - database layer is independent
 resource "null_resource" "cross_layer_validation" {
   lifecycle {
     # Validate VPCs exist (REQUIRED)
@@ -197,7 +190,7 @@ resource "null_resource" "cross_layer_validation" {
     # Validate at least one client enabled
     precondition {
       condition     = length(local.enabled_clients) > 0
-      error_message = "No enabled clients configured. Check clients.auto.tfvars."
+      error_message = "No enabled clients configured. Check ROOT /clients.auto.tfvars."
     }
     
     # Validate database subnets exist

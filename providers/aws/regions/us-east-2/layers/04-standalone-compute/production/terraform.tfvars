@@ -8,7 +8,7 @@ environment  = "production"
 region       = "us-east-2"
 
 # Terraform State
-terraform_state_bucket = "ohio-01-terraform-state-production"
+# terraform_state_bucket = "ohio-01-terraform-state-production"
 terraform_state_region = "us-east-2"
 
 # AMI Configuration (Debian 13)

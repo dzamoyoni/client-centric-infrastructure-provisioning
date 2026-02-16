@@ -1,6 +1,8 @@
-# Platform Layer - Production
+# Platform Layer 
 # PER-CLIENT EKS CLUSTERS - Complete Isolation
 # Each client gets a dedicated EKS cluster in their own VPC
+# Client config centralized in ROOT /clients.auto.tfvars
+# Deploy with: terraform apply -var-file="../../../../../../clients.auto.tfvars"
 
 terraform {
   required_version = ">= 1.5"
@@ -25,54 +27,44 @@ terraform {
 }
 
 # ============================================================================
-# Centralized Tagging Configuration
+# Layer Metadata - From Shared Config Module
+# ============================================================================
+
+module "layer_config" {
+  source   = "../../../../../../../modules/shared-config"
+  layer_id = "02-platform"
+}
+
+# ============================================================================
+# Tagging Configuration
 # ============================================================================
 
 module "tags" {
   source = "../../../../../../../modules/tagging"
   
-  # Core configuration
-  environment      = var.environment
-  layer_name       = "platform"
-  region           = var.region
+  # Core parameters
+  environment = var.environment
+  region      = var.region
   
-  # Layer-specific configuration
-  layer_purpose    = "EKS Cluster Management"
-  deployment_phase = "Phase-2"
-  
-  # Infrastructure classification
-  critical_infrastructure = "true"
-  backup_required        = "true"
-  security_level         = "Critical"  # EKS is critical
-  
-  # Cost management (FinOps aligned)
-  cost_center      = "IT-Infrastructure"
-  billing_group    = "Platform-Engineering"
-  chargeback_code  = "EST1-PLATFORM-001"
-  resource_type    = "EKS"
-  
-  # Operational settings (Enhanced for industrial standards)
-  sla_tier           = "Platinum"  # EKS needs highest SLA
-  monitoring_level   = "Premium"
-  maintenance_window = "Sunday-02:00-04:00-UTC"
-  dr_tier            = "Tier-1"  # Mission Critical
-  rpo                = "1h"
-  rto                = "1h"
-  patch_group        = "Critical"
-  runbook_url        = "https://wiki.company.com/runbooks/eks-platform"
-  incident_contact   = "platform-oncall@company.com"
-  
-  # Data management
-  data_classification  = "Internal"
-  data_residency       = "US"
-  encryption_required  = "true"
-  
-  # Governance
-  compliance_framework = "SOC2-ISO27001"
+  # Layer-specific from shared-config module
+  layer_name         = module.layer_config.layer_name
+  layer_purpose      = module.layer_config.layer_purpose
+  deployment_phase   = module.layer_config.deployment_phase
+  security_level     = module.layer_config.security_level
+  sla_tier           = module.layer_config.sla_tier
+  monitoring_level   = module.layer_config.monitoring_level
+  maintenance_window = module.layer_config.maintenance_window
+  dr_tier            = module.layer_config.dr_tier
+  rpo                = module.layer_config.rpo
+  rto                = module.layer_config.rto
+  patch_group        = module.layer_config.patch_group
+  resource_type      = module.layer_config.resource_type
+  chargeback_code    = module.layer_config.chargeback_code
+  runbook_url        = module.layer_config.runbook_url
+  incident_contact   = module.layer_config.incident_contact
   
   # Platform-specific
   kubernetes_version = var.cluster_version
-  terraform_module   = "modules/eks-platform"
 }
 
 provider "aws" {
@@ -95,15 +87,22 @@ data "terraform_remote_state" "foundation" {
 }
 
 #  LOCALS - Per-Client Configuration
+# Client config comes from CENTRALIZED ROOT /clients.auto.tfvars
 locals {
   # Foundation layer outputs - per-client VPCs
   client_vpcs        = data.terraform_remote_state.foundation.outputs.client_vpcs
   availability_zones = data.terraform_remote_state.foundation.outputs.availability_zones
   
-  # Filter enabled clients with EKS enabled
+  # Filter enabled clients with EKS enabled (from centralized config)
   enabled_clients = {
     for name, config in var.clients : name => config
     if config.enabled && config.eks.enabled
+  }
+  
+  # Filter enabled clients with ALB enabled
+  enabled_alb_clients = {
+    for name, config in var.clients : name => config
+    if config.enabled && try(config.alb.enabled, false)
   }
   
   # Validate all enabled clients have VPCs from foundation layer
@@ -149,7 +148,7 @@ resource "null_resource" "cross_layer_validation" {
     
     precondition {
       condition     = length(local.enabled_clients) > 0
-      error_message = "No enabled clients with EKS. Check clients.auto.tfvars."
+      error_message = "No enabled clients with EKS. Check ROOT /clients.auto.tfvars."
     }
   }
   
@@ -171,6 +170,7 @@ resource "null_resource" "cross_layer_validation" {
 # ============================================================================
 # Each client gets a dedicated EKS cluster in their own VPC
 # No shared resources - complete isolation for security and compliance
+# CLIENT CONFIG: Centralized in ROOT /clients.auto.tfvars
 
 module "client_eks_clusters" {
   for_each = local.client_clusters
@@ -275,3 +275,199 @@ resource "aws_security_group_rule" "client_node_to_node_kubelet" {
 
 #  DATA SOURCE - Current AWS account
 data "aws_caller_identity" "current" {}
+
+# ============================================================================
+# PER-CLIENT APPLICATION LOAD BALANCERS
+# ============================================================================
+# Each client gets dedicated ALB(s) based on their tier:
+# - Premium: "both" (internet-facing + internal)
+# - Standard: "internal" (VPN access only)
+# CLIENT CONFIG: Centralized in ROOT /clients.auto.tfvars
+
+module "client_alb" {
+  for_each = local.enabled_alb_clients
+  
+  source = "../../../../../../../modules/alb-per-client"
+  
+  # Client identification
+  client_id   = each.key
+  environment = var.environment
+  
+  # Network configuration from client's dedicated VPC
+  vpc_id                     = local.client_vpcs[each.key].vpc_id
+  public_subnet_ids          = local.client_vpcs[each.key].public_subnet_ids
+  private_subnet_ids         = local.client_vpcs[each.key].eks_subnet_ids
+  eks_node_security_group_id = module.client_eks_clusters[each.key].node_security_group_id
+  
+  # ALB type: internet-facing, internal, or both
+  alb_type = each.value.alb.type
+  
+  # Port configuration
+  https_external_port = each.value.alb.https_external_port
+  http_external_port  = each.value.alb.http_external_port
+  https_nodeport      = each.value.alb.https_nodeport
+  http_nodeport       = each.value.alb.http_nodeport
+  
+  # SSL/TLS configuration
+  ssl_certificate_arn          = each.value.alb.ssl_certificate_arn
+  ssl_certificate_arn_internal = each.value.alb.ssl_certificate_arn_internal
+  ssl_policy                   = each.value.alb.ssl_policy
+  redirect_http_to_https       = each.value.alb.redirect_http_to_https
+  
+  # Security configuration
+  allowed_cidr_blocks_public   = each.value.alb.allowed_cidr_blocks_public
+  allowed_cidr_blocks_internal = each.value.alb.allowed_cidr_blocks_internal
+  
+  # Health check configuration
+  health_check_path = each.value.alb.health_check_path
+  
+  # Access logs
+  enable_access_logs = each.value.alb.enable_access_logs
+  access_logs_bucket = each.value.alb.enable_access_logs ? "${each.key}-alb-logs-${var.region}" : ""
+  
+  # WAF configuration (only for public ALBs)
+  waf_acl_arn = each.value.alb.enable_waf && contains(["internet-facing", "both"], each.value.alb.type) ? try(aws_wafv2_web_acl.client_waf[each.key].arn, null) : null
+  
+  # Feature flags
+  enable_deletion_protection = each.value.alb.enable_deletion_protection
+  enable_sticky_sessions     = each.value.alb.enable_sticky_sessions
+  
+  # Tags from shared-config module
+  tags = merge(
+    module.tags.common_tags,
+    {
+      ClientName = each.key
+      ClientCode = each.value.client_code
+      Tier       = each.value.tier
+      Layer      = "02-platform"
+      Resource   = "ALB"
+    }
+  )
+  
+  depends_on = [module.client_eks_clusters]
+}
+
+# ============================================================================
+# ALB Target Group Attachments to EKS Auto Scaling Groups
+# ============================================================================
+# Automatically attach EKS node groups to ALB target groups
+
+resource "aws_autoscaling_attachment" "alb_target_groups" {
+  for_each = {
+    for pair in flatten([
+      for client_name, alb in module.client_alb : [
+        for tg_arn in alb.target_group_arns : {
+          key             = "${client_name}-${md5(tg_arn)}"
+          client_name     = client_name
+          tg_arn          = tg_arn
+        }
+      ]
+    ]) : pair.key => pair
+  }
+  
+  autoscaling_group_name = module.client_eks_clusters[each.value.client_name].node_group_asg_names["primary"]
+  lb_target_group_arn    = each.value.tg_arn
+}
+
+# ============================================================================
+# WAF Web ACLs for Internet-Facing ALBs (Optional)
+# ============================================================================
+# Only created if enable_waf = true and ALB is internet-facing
+
+resource "aws_wafv2_web_acl" "client_waf" {
+  for_each = {
+    for name, config in local.enabled_alb_clients : name => config
+    if try(config.alb.enable_waf, false) && contains(["internet-facing", "both"], config.alb.type)
+  }
+  
+  name  = "${each.key}-${var.environment}-waf"
+  scope = "REGIONAL"
+  
+  default_action {
+    allow {}
+  }
+  
+  # AWS Managed Rule: Core Rule Set
+  rule {
+    name     = "AWSManagedRulesCommonRuleSet"
+    priority = 1
+    
+    override_action {
+      none {}
+    }
+    
+    statement {
+      managed_rule_group_statement {
+        vendor_name = "AWS"
+        name        = "AWSManagedRulesCommonRuleSet"
+      }
+    }
+    
+    visibility_config {
+      cloudwatch_metrics_enabled = true
+      metric_name                = "${each.key}-CommonRuleSet"
+      sampled_requests_enabled   = true
+    }
+  }
+  
+  # AWS Managed Rule: Known Bad Inputs
+  rule {
+    name     = "AWSManagedRulesKnownBadInputsRuleSet"
+    priority = 2
+    
+    override_action {
+      none {}
+    }
+    
+    statement {
+      managed_rule_group_statement {
+        vendor_name = "AWS"
+        name        = "AWSManagedRulesKnownBadInputsRuleSet"
+      }
+    }
+    
+    visibility_config {
+      cloudwatch_metrics_enabled = true
+      metric_name                = "${each.key}-KnownBadInputs"
+      sampled_requests_enabled   = true
+    }
+  }
+  
+  # AWS Managed Rule: SQL Injection
+  rule {
+    name     = "AWSManagedRulesSQLiRuleSet"
+    priority = 3
+    
+    override_action {
+      none {}
+    }
+    
+    statement {
+      managed_rule_group_statement {
+        vendor_name = "AWS"
+        name        = "AWSManagedRulesSQLiRuleSet"
+      }
+    }
+    
+    visibility_config {
+      cloudwatch_metrics_enabled = true
+      metric_name                = "${each.key}-SQLi"
+      sampled_requests_enabled   = true
+    }
+  }
+  
+  visibility_config {
+    cloudwatch_metrics_enabled = true
+    metric_name                = "${each.key}-WAF"
+    sampled_requests_enabled   = true
+  }
+  
+  tags = merge(
+    module.tags.common_tags,
+    {
+      Name       = "${each.key}-${var.environment}-waf"
+      ClientName = each.key
+      Resource   = "WAF"
+    }
+  )
+}

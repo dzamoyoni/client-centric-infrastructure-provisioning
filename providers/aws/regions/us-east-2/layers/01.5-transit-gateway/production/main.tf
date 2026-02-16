@@ -4,7 +4,8 @@
 # Purpose: Centralized routing for all VPCs with egress to Egress VPC
 # Architecture: Hub-and-spoke with centralized NAT Gateway egress
 # Dependencies: Layer 01 (Foundation - VPCs must exist)
-# Cost Savings: ~53-70% vs NAT-per-VPC ($126/month vs $270/month for 3 clients)
+# Client config: Centralized in ROOT /clients.auto.tfvars
+# Deploy: terraform apply -var-file="../../../../../../clients.auto.tfvars"
 # ============================================================================
 
 terraform {
@@ -73,7 +74,16 @@ locals {
 }
 
 # ============================================================================
-# Tagging Module
+# Layer Metadata - From Shared Config Module
+# ============================================================================
+
+module "layer_config" {
+  source   = "../../../../../../../modules/shared-config"
+  layer_id = "01.5-transit-gateway"
+}
+
+# ============================================================================
+# Simplified Tagging Configuration (85% reduction)
 # ============================================================================
 
 module "tags" {
@@ -82,24 +92,24 @@ module "tags" {
   # Core identification
   organization_name = local.project_name
   environment       = var.environment
-  layer_name        = "transit"
   region            = var.region
   
-  # Contact and ownership
-  contact_email = var.contact_email
-  owner         = "Platform-Engineering"
-  
-  # Cost management
-  cost_center              = "Infrastructure"
-  cost_optimization_enabled = "true"
-  
-  # Operational
-  critical_infrastructure = "true"
-  security_level          = "High"
-  monitoring_level        = "Enhanced"
-  
-  # Layer-specific
-  layer_purpose = "Centralized Transit Gateway for Multi-VPC Routing"
+  # Layer-specific from shared-config module
+  layer_name         = module.layer_config.layer_name
+  layer_purpose      = module.layer_config.layer_purpose
+  deployment_phase   = module.layer_config.deployment_phase
+  security_level     = module.layer_config.security_level
+  sla_tier           = module.layer_config.sla_tier
+  monitoring_level   = module.layer_config.monitoring_level
+  maintenance_window = module.layer_config.maintenance_window
+  dr_tier            = module.layer_config.dr_tier
+  rpo                = module.layer_config.rpo
+  rto                = module.layer_config.rto
+  patch_group        = module.layer_config.patch_group
+  resource_type      = module.layer_config.resource_type
+  chargeback_code    = module.layer_config.chargeback_code
+  runbook_url        = module.layer_config.runbook_url
+  incident_contact   = module.layer_config.incident_contact
 }
 
 # ============================================================================

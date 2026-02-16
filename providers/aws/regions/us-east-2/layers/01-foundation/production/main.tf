@@ -4,7 +4,8 @@
 # PER-CLIENT VPC ARCHITECTURE:
 # - Each client gets a dedicated VPC with unique CIDR
 # - Complete network isolation between clients
-# - Add/remove clients by editing clients.auto.tfvars only
+# - Client config centralized in ROOT /clients.auto.tfvars
+# - Deploy with: terraform apply -var-file="../../../../../../clients.auto.tfvars"
 
 terraform {
   required_version = ">= 1.5"
@@ -21,51 +22,44 @@ terraform {
 }
 
 # ============================================================================
-# Centralized Tagging Configuration
+# Layer Metadata - From Shared Config Module
 # ============================================================================
+# Single source of truth: modules/shared-config/main.tf
+
+module "layer_config" {
+  source   = "../../../../../../../modules/shared-config"
+  layer_id = "01-foundation"
+}
+
+# ============================================================================
+# Simplified Tagging Configuration (85% reduction)
+# ============================================================================
+# Layer metadata from shared-config module (no duplication!)
+# Common defaults from tagging module
 
 module "tags" {
   source = "../../../../../../../modules/tagging"
   
-  # Core configuration
-  environment      = var.environment
-  layer_name       = "foundation"
-  region           = var.region
+  # Required core parameters
+  environment = var.environment
+  region      = var.region
   
-  # Layer-specific configuration
-  layer_purpose    = "VPC and Network Infrastructure"
-  deployment_phase = "Phase-1"
-  
-  # Infrastructure classification
-  critical_infrastructure = "true"
-  backup_required        = "true"
-  security_level         = "High"
-  
-  # Cost management (FinOps aligned)
-  cost_center      = "IT-Infrastructure"
-  billing_group    = "Platform-Engineering"
-  chargeback_code  = "EST1-FOUNDATION-001"
-  resource_type    = "VPC"
-  
-  # Operational settings (Enhanced for industrial standards)
-  sla_tier           = "Gold"
-  monitoring_level   = "Enhanced"
-  maintenance_window = "Sunday-00:00-04:00-UTC"
-  dr_tier            = "Tier-2"  # Business Critical
-  rpo                = "4h"
-  rto                = "4h"
-  patch_group        = "Critical"
-  runbook_url        = "https://wiki.company.com/runbooks/network-foundation"
-  incident_contact   = "platform-oncall@company.com"
-  
-  # Data management
-  data_classification  = "Internal"
-  data_residency       = "US"
-  encryption_required  = "true"
-  
-  # Governance
-  compliance_framework = "SOC2-ISO27001"
-  terraform_module     = "modules/client-vpc"
+  # Layer-specific from shared-config module
+  layer_name         = module.layer_config.layer_name
+  layer_purpose      = module.layer_config.layer_purpose
+  deployment_phase   = module.layer_config.deployment_phase
+  security_level     = module.layer_config.security_level
+  sla_tier           = module.layer_config.sla_tier
+  monitoring_level   = module.layer_config.monitoring_level
+  maintenance_window = module.layer_config.maintenance_window
+  dr_tier            = module.layer_config.dr_tier
+  rpo                = module.layer_config.rpo
+  rto                = module.layer_config.rto
+  patch_group        = module.layer_config.patch_group
+  resource_type      = module.layer_config.resource_type
+  chargeback_code    = module.layer_config.chargeback_code
+  runbook_url        = module.layer_config.runbook_url
+  incident_contact   = module.layer_config.incident_contact
 }
 
 provider "aws" {
@@ -89,6 +83,9 @@ data "aws_availability_zones" "available" {
 # Each client gets a dedicated VPC with their own CIDR from cidr-registry.yaml
 # Includes: VPC, IGW, NAT Gateways, Subnets, Security Groups, VPC Endpoints
 # NO SHARED RESOURCES - complete client isolation
+#
+# CLIENT CONFIG: centralized in ROOT /clients.auto.tfvars
+# No more duplicate configs across layers!
 
 module "client_vpcs" {
   for_each = local.enabled_clients
@@ -100,7 +97,7 @@ module "client_vpcs" {
   environment  = var.environment
   region       = var.region
 
-  # Network configuration from clients.auto.tfvars
+  # Network configuration from CENTRALIZED ROOT /clients.auto.tfvars
   vpc_cidr           = each.value.network.vpc_cidr
   availability_zones = local.availability_zones
 
@@ -147,7 +144,7 @@ module "client_vpn" {
   vpc_id                 = module.client_vpcs[each.key].vpc_id
   client_route_table_ids = module.client_vpcs[each.key].private_route_table_ids
   
-  # Client-specific VPN configuration from clients.auto.tfvars
+  # Client-specific VPN configuration from CENTRALIZED /clients.auto.tfvars
   # NO DEFAULTS - all values must be explicit in tfvars
   customer_gateway_ip = each.value.vpn.customer_gateway_ip
   bgp_asn             = each.value.vpn.bgp_asn
@@ -183,7 +180,6 @@ module "client_vpn" {
 # Egress VPC - Centralized NAT Gateway for All VPCs
 # ============================================================================
 # Purpose: Centralized internet egress for all VPCs via Transit Gateway
-# Cost Savings: ~53-70% vs NAT-per-VPC ($126/month vs $270/month for 3 clients)
 # Architecture: All VPCs route to Transit Gateway → Egress VPC → NAT → Internet
 
 module "egress_vpc" {

@@ -1,12 +1,12 @@
 # =============================================================================
 # Route53 Hosted Zones - Per-Client DNS Management
 # =============================================================================
-# Each client gets a dedicated hosted zone for their subdomain under ezra.world
-# Example: client-a.ezra.world, client-b.ezra.world
+# Each client gets a dedicated hosted zone for their subdomain under 'xyz'
+# Example: client-a.xyz, client-b.xyz
 #
 # This eliminates the hybrid approach - everything is managed by Terraform
 
-# Data source for parent zone (ezra.world)
+# Data source for parent zone (xyz)
 data "aws_route53_zone" "parent" {
   count        = var.enable_external_dns ? 1 : 0
   name         = var.parent_dns_zone

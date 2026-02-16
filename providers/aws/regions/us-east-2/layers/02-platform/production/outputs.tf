@@ -100,7 +100,7 @@ output "deployment_notice" {
     KUBECONFIG ACCESS:
     ${join("\n    ", [for name, cluster in module.client_eks_clusters : "  aws eks update-kubeconfig --name ${cluster.cluster_name} --region ${var.region}"])}
     
-    ➡️  NEXT PHASE: Layer 03 - Database
+    NEXT PHASE: Layer 03 - Database
     - Access clusters via: outputs.client_clusters["client-name"].cluster_endpoint
     - Each client's database will be in their dedicated VPC
     - Complete data isolation between clients

@@ -64,6 +64,42 @@ output "external_dns_service_account_arns" {
   } : {}
 }
 
+# =============================================================================
+# ROUTE53 OUTPUTS - For Layer 02 DNS Discovery
+# =============================================================================
+
+output "client_zone_ids" {
+  description = "Route53 hosted zone IDs for each client (Layer 02 uses this for ALB DNS)"
+  value = var.enable_external_dns ? {
+    for client, zone in aws_route53_zone.client_zones :
+    client => zone.zone_id
+  } : {}
+}
+
+output "client_zone_names" {
+  description = "Route53 hosted zone names for each client"
+  value = var.enable_external_dns ? {
+    for client, zone in aws_route53_zone.client_zones :
+    client => zone.name
+  } : {}
+}
+
+output "client_zone_name_servers" {
+  description = "Route53 hosted zone name servers for each client"
+  value = var.enable_external_dns ? {
+    for client, zone in aws_route53_zone.client_zones :
+    client => zone.name_servers
+  } : {}
+}
+
+output "parent_zone_info" {
+  description = "Parent DNS zone information"
+  value = var.enable_external_dns ? {
+    name    = var.parent_dns_zone
+    zone_id = data.aws_route53_zone.parent[0].zone_id
+  } : null
+}
+
 #  PER-CLIENT CLUSTER SERVICES SUMMARY
 output "client_cluster_services" {
   description = "Summary of deployed essential cluster services per client"

@@ -84,7 +84,7 @@ enable_istio_service_monitor  = true
 enable_istio_prometheus_rules = true
 
 # Route53 DNS Configuration (NEW - replaces dns_zone_ids)
-parent_dns_zone          = "ezra.world"
+parent_dns_zone          = "xyz"
 create_root_placeholder  = true
 
 # Legacy DNS variables (deprecated - zones now auto-created per client)

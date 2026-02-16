@@ -259,13 +259,13 @@ output "deployment_notice" {
     3. Add client config to clients.auto.tfvars
     4. Apply: terraform plan && terraform apply
     
-    ➡️  NEXT PHASE: Layer 01.5 - Transit Gateway
+    NEXT PHASE: Layer 01.5 - Transit Gateway
     - Deploy Transit Gateway for centralized routing
     - Attach all VPCs (clients + egress) to Transit Gateway
     - Configure routing: Clients → TGW → Egress VPC → NAT → Internet
     
     
-    ➡️ COST ESTIMATE:
+    COST ESTIMATE:
     - Egress VPC: $90/month (2 NAT Gateways for HA)
     - Transit Gateway: $36/month (in Layer 01.5)
     - Per-client VPC: ~$10/month (VPC endpoints only)

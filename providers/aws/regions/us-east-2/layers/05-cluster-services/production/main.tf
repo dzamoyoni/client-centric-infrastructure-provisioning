@@ -1,8 +1,10 @@
-# Cluster Services Layer - Production
+# Cluster Services Layer - Production 
 # ESSENTIAL KUBERNETES SERVICES - PER-CLIENT DEPLOYMENT
-# Deploys essential cluster services to each client's dedicated EKS cluster.
+# Deploys essential cluster services to each client.
 # These are NOT shared between clients - each client cluster gets its own stack.
 # Services: Cluster Autoscaler, AWS Load Balancer Controller, Metrics Server, ExternalDNS, Istio
+# Client config: Centralized in ROOT /clients.auto.tfvars
+# Deploy: terraform apply -var-file="../../../../../../clients.auto.tfvars"
 
 terraform {
   required_version = ">= 1.5"
@@ -27,53 +29,41 @@ terraform {
 }
 
 # ============================================================================
-# Centralized Tagging Configuration
+# Layer Metadata - From Shared Config Module
+# ============================================================================
+
+module "layer_config" {
+  source   = "../../../../../../../modules/shared-config"
+  layer_id = "05-cluster-services"
+}
+
+# ============================================================================
+# Simplified Tagging Configuration (85% reduction)
 # ============================================================================
 
 module "tags" {
   source = "../../../../../../../modules/tagging"
   
   # Core configuration
-  environment      = var.environment
-  layer_name       = "cluster-services"
-  region           = var.region
+  environment = var.environment
+  region      = var.region
   
-  # Layer-specific configuration
-  layer_purpose    = "Kubernetes Essential Services (Autoscaler, ALB, ExternalDNS, Istio)"
-  deployment_phase = "Phase-5"
-  
-  # Infrastructure classification
-  critical_infrastructure = "true"
-  backup_required        = "true"
-  security_level         = "Critical"
-  
-  # Cost management (FinOps aligned)
-  cost_center      = "IT-Infrastructure"
-  billing_group    = "Platform-Engineering"
-  chargeback_code  = "EST1-CLUSTER-SVC-001"
-  resource_type    = "K8S-Services"
-  
-  # Operational settings (Enhanced for industrial standards)
-  sla_tier           = "Platinum"  # Cluster services are critical
-  monitoring_level   = "Premium"
-  maintenance_window = "Sunday-02:30-04:30-UTC"
-  dr_tier            = "Tier-1"  # Mission Critical
-  rpo                = "1h"
-  rto                = "1h"
-  patch_group        = "Critical"
-  runbook_url        = "https://wiki.company.com/runbooks/cluster-services"
-  incident_contact   = "platform-oncall@company.com"
-  
-  # Data management
-  data_classification  = "Internal"
-  data_residency       = "US"
-  encryption_required  = "true"
-  
-  # Governance
-  compliance_framework = "SOC2-ISO27001"
-  
-  # Cluster services specific
-  terraform_module = "modules/shared-services"
+  # Layer-specific from shared-config module
+  layer_name         = module.layer_config.layer_name
+  layer_purpose      = module.layer_config.layer_purpose
+  deployment_phase   = module.layer_config.deployment_phase
+  security_level     = module.layer_config.security_level
+  sla_tier           = module.layer_config.sla_tier
+  monitoring_level   = module.layer_config.monitoring_level
+  maintenance_window = module.layer_config.maintenance_window
+  dr_tier            = module.layer_config.dr_tier
+  rpo                = module.layer_config.rpo
+  rto                = module.layer_config.rto
+  patch_group        = module.layer_config.patch_group
+  resource_type      = module.layer_config.resource_type
+  chargeback_code    = module.layer_config.chargeback_code
+  runbook_url        = module.layer_config.runbook_url
+  incident_contact   = module.layer_config.incident_contact
 }
 
 provider "aws" {
@@ -116,7 +106,7 @@ locals {
   # Platform layer outputs - per-client EKS clusters
   client_clusters = data.terraform_remote_state.platform.outputs.client_clusters
   
-  # Filter enabled clients
+  # Filter enabled clients from CENTRALIZED ROOT /clients.auto.tfvars
   enabled_clients = {
     for name, config in var.clients : name => config
     if config.enabled
@@ -156,7 +146,6 @@ module "client_cluster_services" {
   for_each = local.enabled_clients
 
   # Core project configuration
-  # project_name removed - using client-centric naming
   environment  = var.environment
   region       = var.region
 

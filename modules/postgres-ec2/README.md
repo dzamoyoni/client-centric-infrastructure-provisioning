@@ -414,7 +414,5 @@ This module is provided under the MIT License. See LICENSE file for details.
 ## Support
 
 For issues and questions:
-1. Check the troubleshooting section
-2. Review PostgreSQL documentation
-3. Create an issue in the repository
+1. Review PostgreSQL documentation. Create an issue in the repository
 4. Contact the database team

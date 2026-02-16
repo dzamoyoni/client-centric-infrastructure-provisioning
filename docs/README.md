@@ -38,6 +38,12 @@ If you need **true tenant isolation** without duplicating shared infrastructure,
 
 ### Core Infrastructure Guides
 
+#### [Infrastructure as a Product](./INFRASTRUCTURE-AS-A-PRODUCT.md) 📖 **Executive & Team Overview**
+**Status**: Production  
+**Audience**: All teams, leadership, stakeholders
+
+Comprehensive document explaining the architecture philosophy, design rationale, benefits, standards alignment, and why this infrastructure represents a reliable, top-notch system. Includes GitOps readiness assessment.
+
 #### [Getting Started](./GETTING-STARTED.md) 🚀 **Start Here**
 **Status**: Production  
 **Audience**: Anyone deploying infrastructure

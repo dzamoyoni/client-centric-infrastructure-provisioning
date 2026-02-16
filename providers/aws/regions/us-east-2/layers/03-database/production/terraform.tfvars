@@ -26,8 +26,6 @@ postgres_ami_id = "ami-0b4bbe381ba0dd99b"  # Debian 13 backports us-east-2
 
 # Management Access
 management_cidr_blocks = [
-  "178.162.141.130/32",
-  "165.90.14.138/32",
   "41.72.206.78/32",
   "102.217.4.85/32"
 ]

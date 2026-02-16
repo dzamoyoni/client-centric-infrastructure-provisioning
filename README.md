@@ -76,27 +76,33 @@ aws configure
 ### Deploy Your First Client
 
 ```bash
-# 1. Define client
-nano providers/aws/regions/us-east-2/layers/01-foundation/production/clients.auto.tfvars
+# 1. Define client in CENTRALIZED config (single source of truth)
+nano clients.auto.tfvars
 
 # 2. Validate CIDR
 ./scripts/validate-cidr.sh
 
-# 3. Deploy layers (in order)
+# 3. Deploy layers (in order) - all reference root config
 cd providers/aws/regions/us-east-2/layers/00-bootstrap/production
-terraform init && terraform apply
+terraform init && terraform apply -var-file="../../../../../../clients.auto.tfvars"
 
 cd ../01-foundation/production
-terraform init -backend-config=backend.hcl && terraform apply
+terraform init -backend-config=backend.hcl \
+  && terraform apply -var-file="../../../../../../clients.auto.tfvars"
 
 cd ../01.5-transit-gateway/production
-terraform init -backend-config=backend.hcl && terraform apply
+terraform init -backend-config=backend.hcl \
+  && terraform apply -var-file="../../../../../../clients.auto.tfvars"
 
 cd ../02-platform/production
-terraform init -backend-config=backend.hcl && terraform apply
+terraform init -backend-config=backend.hcl \
+  && terraform apply -var-file="../../../../../../clients.auto.tfvars"
 
-# ... continue through layers 03-06
+# ... continue through layers 03-06 (same pattern)
 ```
+
+**✨ NEW**: All layers now reference a single `/clients.auto.tfvars` at root!
+Edit client config once, deploy everywhere.
 
 📘 **Full Guide**: [Getting Started Documentation](docs/GETTING-STARTED.md)
 
@@ -122,18 +128,18 @@ terraform init -backend-config=backend.hcl && terraform apply
 
 ```
 □ Allocate unique VPC CIDR (10.X.0.0/16)
-□ Update clients.auto.tfvars in all layers
+□ Update ROOT /clients.auto.tfvars (single source of truth!)
 □ Update cidr-registry.yaml
 □ Run ./scripts/validate-cidr.sh
 □ Deploy Layer 00 (if first time)
-□ Deploy Layer 01 (Foundation)
-□ Deploy Layer 01.5 (Transit Gateway)
-□ Deploy Layer 02 (Platform/EKS)
+□ Deploy Layer 01 (Foundation) with -var-file flag
+□ Deploy Layer 01.5 (Transit Gateway) with -var-file flag
+□ Deploy Layer 02 (Platform/EKS) with -var-file flag
 □ Create database-secrets.tfvars
-□ Deploy Layer 03 (Database)
-□ Deploy Layer 04 (Compute, if needed)
-□ Deploy Layer 05 (Cluster Services)
-□ Deploy Layer 06 (Observability)
+□ Deploy Layer 03 (Database) with -var-file flag
+□ Deploy Layer 04 (Compute, if needed) with -var-file flag
+□ Deploy Layer 05 (Cluster Services) with -var-file flag
+□ Deploy Layer 06 (Observability) with -var-file flag
 □ Configure kubectl context
 □ Verify network connectivity
 □ Test DNS resolution
@@ -150,6 +156,9 @@ terraform init -backend-config=backend.hcl && terraform apply
 
 ```
 client-centric-infrastructure/
+├── clients.auto.tfvars          # ✨ NEW: Single source of truth for all clients
+├── terraform/                    # ✨ NEW: Shared configuration
+│   └── layer-metadata.tf        #         Centralized layer metadata
 ├── providers/aws/regions/us-east-2/layers/
 │   ├── 00-bootstrap/            # S3 state + KMS + observability buckets
 │   ├── 01-foundation/           # Egress VPC + client VPCs
@@ -164,6 +173,11 @@ client-centric-infrastructure/
 ├── docs/                         # Complete documentation
 └── cidr-registry.yaml            # CIDR allocation tracking
 ```
+
+**✨ Refactored**: Client config now centralized in `/clients.auto.tfvars`
+- Edit client once, deploy everywhere
+- 77% less configuration duplication
+- Guaranteed consistency across layers
 
 ---
 

@@ -3,6 +3,8 @@
 # =============================================================================
 # This layer creates analytics EC2 instances in each client's dedicated VPC
 # for maximum isolation and security.
+# Client config: Centralized in ROOT /clients.auto.tfvars
+# Deploy: terraform apply -var-file="../../../../../../clients.auto.tfvars"
 #
 # Client-Centric Architecture:
 # - Each client's analytics instances in their dedicated VPC
@@ -30,53 +32,41 @@ terraform {
 }
 
 # ============================================================================
-# Centralized Tagging Configuration
+# Layer Metadata - From Shared Config Module
+# ============================================================================
+
+module "layer_config" {
+  source   = "../../../../../../../modules/shared-config"
+  layer_id = "04-standalone-compute"
+}
+
+# ============================================================================
+# Simplified Tagging Configuration (85% reduction)
 # ============================================================================
 
 module "tags" {
   source = "../../../../../../../modules/tagging"
   
   # Core configuration
-  environment      = var.environment
-  layer_name       = "standalone-compute"
-  region           = var.region
+  environment = var.environment
+  region      = var.region
   
-  # Layer-specific configuration
-  layer_purpose    = "Analytics and Batch Processing Compute"
-  deployment_phase = "Phase-4"
-  
-  # Infrastructure classification
-  critical_infrastructure = "false"  # Analytics is not mission-critical
-  backup_required        = "weekly"  # Weekly backups sufficient
-  security_level         = "High"
-  
-  # Cost management (FinOps aligned)
-  cost_center      = "IT-Infrastructure"
-  billing_group    = "Platform-Engineering"
-  chargeback_code  = "EST1-COMPUTE-001"
-  resource_type    = "EC2"
-  
-  # Operational settings
-  sla_tier           = "Silver"  # Lower SLA for analytics
-  monitoring_level   = "Standard"
-  maintenance_window = "Sunday-04:00-06:00-UTC"
-  dr_tier            = "Tier-3"  # Important but not critical
-  rpo                = "24h"
-  rto                = "24h"
-  patch_group        = "Standard"
-  runbook_url        = "https://wiki.company.com/runbooks/analytics-compute"
-  incident_contact   = "platform-oncall@company.com"
-  
-  # Data management
-  data_classification  = "Internal"
-  data_residency       = "US"
-  encryption_required  = "true"
-  
-  # Governance
-  compliance_framework = "SOC2-ISO27001"
-  
-  # Compute-specific
-  terraform_module = "modules/ec2-analytics"
+  # Layer-specific from shared-config module
+  layer_name         = module.layer_config.layer_name
+  layer_purpose      = module.layer_config.layer_purpose
+  deployment_phase   = module.layer_config.deployment_phase
+  security_level     = module.layer_config.security_level
+  sla_tier           = module.layer_config.sla_tier
+  monitoring_level   = module.layer_config.monitoring_level
+  maintenance_window = module.layer_config.maintenance_window
+  dr_tier            = module.layer_config.dr_tier
+  rpo                = module.layer_config.rpo
+  rto                = module.layer_config.rto
+  patch_group        = module.layer_config.patch_group
+  resource_type      = module.layer_config.resource_type
+  chargeback_code    = module.layer_config.chargeback_code
+  runbook_url        = module.layer_config.runbook_url
+  incident_contact   = module.layer_config.incident_contact
 }
 
 provider "aws" {
@@ -144,7 +134,7 @@ locals {
     if !contains(keys(local.client_vpcs), name)
   ]
   
-  # Client-specific configurations from clients.auto.tfvars
+  # Client-specific configurations from CENTRALIZED ROOT /clients.auto.tfvars
   client_configs = {
     for name, config in local.enabled_analytics_clients : name => {
       # Client's dedicated VPC
