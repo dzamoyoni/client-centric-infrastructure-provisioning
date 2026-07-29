@@ -32,9 +32,9 @@ module "layer_config" {
 }
 
 # ============================================================================
-# Simplified Tagging Configuration (85% reduction)
+# Simplified Tagging Configuration
 # ============================================================================
-# Layer metadata from shared-config module (no duplication!)
+# Layer metadata from shared-config module
 # Common defaults from tagging module
 
 module "tags" {

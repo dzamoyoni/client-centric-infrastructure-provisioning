@@ -33,7 +33,7 @@ variable "layer_name" {
   type        = string
   validation {
     condition = contains([
-      "bootstrap", "foundation", "transit", "platform", "database", "observability", "application", 
+      "bootstrap", "foundation", "transit", "transit-gateway", "platform", "database", "observability", "application", 
       "security", "networking", "compute", "storage", "shared-services",
       "client-nodegroups", "standalone-compute", "database-layer", "cluster-services"
     ], var.layer_name)
@@ -57,7 +57,7 @@ variable "region" {
 variable "organization_name" {
   description = "Organization name"
   type        = string
-  default     = "EZ"
+  default     = "MyOrg"
 }
 
 variable "portfolio_name" {

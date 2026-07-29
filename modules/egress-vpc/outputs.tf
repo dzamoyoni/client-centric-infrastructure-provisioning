@@ -120,6 +120,10 @@ output "flow_log_group_name" {
   value       = try(aws_cloudwatch_log_group.vpc_flow_log[0].name, null)
 }
 
+output "flow_log_role_arn" {
+  description = "The ARN of the IAM role used for VPC Flow Logs."
+  value       = local.flow_log_role_arn
+}
 # ============================================================================
 # Cost Information
 # ============================================================================

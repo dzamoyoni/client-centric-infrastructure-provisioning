@@ -1,4 +1,4 @@
-#  Variables for Foundation Layer - Production
+#  Variables for Foundation Layer 
 #  Per-Client VPC Architecture
 
 # Project Configuration

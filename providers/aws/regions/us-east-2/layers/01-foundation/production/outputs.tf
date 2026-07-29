@@ -152,6 +152,10 @@ output "client_private_route_table_ids" {
   }
 }
 
+output "egress_private_route_table_ids" {
+  description = "Private route table IDs in Egress VPC (for TGW return routes)"
+  value       = module.egress_vpc.private_route_table_ids
+}
 # ============================================================================
 # Per-Client VPN Connections
 # ============================================================================
@@ -233,7 +237,7 @@ output "deployment_notice" {
   description = "Per-Client VPC Architecture deployment summary and next steps"
   value       = <<-EOT
     ╔═══════════════════════════════════════════════════════════════════╗
-    ║  PHASE 1: FOUNDATION LAYER - PER-CLIENT VPC ARCHITECTURE         ║
+    ║  PHASE 1: FOUNDATION LAYER - PER-CLIENT VPC ARCHITECTURE          ║
     ╚═══════════════════════════════════════════════════════════════════╝
     
     SUCCESSFULLY DEPLOYED:
@@ -269,6 +273,5 @@ output "deployment_notice" {
     - Egress VPC: $90/month (2 NAT Gateways for HA)
     - Transit Gateway: $36/month (in Layer 01.5)
     - Per-client VPC: ~$10/month (VPC endpoints only)
-    - Total for 3 clients: ~$126/month vs $270/month (53% savings!)
   EOT
 }

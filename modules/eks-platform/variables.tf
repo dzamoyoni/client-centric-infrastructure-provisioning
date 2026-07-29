@@ -6,7 +6,7 @@ variable "project_name" {
   description = "Project name for resource naming (DEPRECATED - not used in client-centric architecture)"
   type        = string
   default     = ""
-  
+
   validation {
     condition     = var.project_name == "" || can(regex("^[a-z0-9-]+$", var.project_name))
     error_message = "Project name must be lowercase alphanumeric with hyphens only."
@@ -14,9 +14,8 @@ variable "project_name" {
 }
 
 variable "cluster_name" {
-  description = "EKS cluster name (overrides default project_name based naming)"
+  description = "EKS cluster name (required for client-centric architecture)"
   type        = string
-  default     = null
 }
 
 variable "environment" {
@@ -37,10 +36,10 @@ variable "region" {
 variable "cluster_version" {
   description = "Kubernetes version for EKS cluster"
   type        = string
-  default     = "1.31"
+  default     = "1.35"
   validation {
-    condition     = can(regex("^1\\.(30|31)$", var.cluster_version))
-    error_message = "Cluster version must be 1.30 or 1.31."
+    condition     = can(regex("^1\\.(30|31|32|33|34|35)$", var.cluster_version))
+    error_message = "Cluster version must be 1.30, 1.31, 1.32, 1.33, 1.34, or 1.35."
   }
 }
 
@@ -89,9 +88,20 @@ variable "node_groups" {
     desired_size   = number       # Desired number of nodes
     disk_size      = number       # EBS disk size in GB
 
+    # FIX 1: Added capacity_type - was missing but referenced in platform main.tf
+    capacity_type = optional(string, "ON_DEMAND") # ON_DEMAND or SPOT
+
     # Optional client-specific configuration
     client  = optional(string, "platform") # Client identifier
     purpose = optional(string)             # Node group purpose
+
+    # FIX 2: Added taints - was missing from type but referenced via lookup() in main.tf
+    # Defining it properly in the type avoids lookup() workarounds and type errors
+    taints = optional(map(object({
+      key    = string
+      value  = optional(string, "")
+      effect = string # NO_SCHEDULE, NO_EXECUTE, PREFER_NO_SCHEDULE
+    })), {})
 
     # Optional custom labels and tags
     labels = optional(map(string), {})
@@ -112,6 +122,14 @@ variable "node_groups" {
       ng.disk_size >= 20 && ng.disk_size <= 1000
     ])
     error_message = "Disk size must be between 20 and 1000 GB."
+  }
+
+  validation {
+    condition = alltrue([
+      for name, ng in var.node_groups :
+      contains(["ON_DEMAND", "SPOT"], ng.capacity_type)
+    ])
+    error_message = "capacity_type must be ON_DEMAND or SPOT."
   }
 }
 
@@ -150,7 +168,7 @@ variable "container_log_max_files" {
   description = "Maximum number of rotated log files to retain"
   type        = number
   default     = 3
-  
+
   validation {
     condition     = var.container_log_max_files >= 1 && var.container_log_max_files <= 10
     error_message = "container_log_max_files must be between 1 and 10."

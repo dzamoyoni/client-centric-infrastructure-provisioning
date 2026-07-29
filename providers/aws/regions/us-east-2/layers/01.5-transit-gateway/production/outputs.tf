@@ -126,6 +126,9 @@ output "routes_created" {
   }
 }
 
+
+
+
 output "client_routing_summary" {
   description = "Per-client routing configuration (automatically managed)"
   value = {

@@ -36,7 +36,7 @@ module "layer_config" {
 }
 
 # ============================================================================
-# Simplified Tagging Configuration (85% reduction)
+# Simplified Tagging Configuration 
 # ============================================================================
 
 module "tags" {

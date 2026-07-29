@@ -1,7 +1,10 @@
-# EKS Cluster Wrapper Module - Outputs
+# EKS Platform Wrapper Module - Outputs
 # Standardized outputs for consistent integration across all infrastructure layers
 
+# =============================================================================
 # CLUSTER INFORMATION
+# =============================================================================
+
 output "cluster_arn" {
   description = "Amazon Resource Name (ARN) of the cluster"
   value       = module.eks.cluster_arn
@@ -33,13 +36,17 @@ output "cluster_oidc_issuer_url" {
   value       = module.eks.cluster_oidc_issuer_url
 }
 
-output "cluster_platform_version" {
-  description = "Platform version for the cluster"
-  value       = module.eks.cluster_platform_version
+output "cluster_version" {
+  description = "The Kubernetes version for the cluster"
+  value       = module.eks.cluster_version
 }
 
+# =============================================================================
+# SECURITY
+# =============================================================================
+
 output "cluster_primary_security_group_id" {
-  description = "Cluster security group that was created by Amazon EKS for the cluster"
+  description = "Cluster security group created by Amazon EKS"
   value       = module.eks.cluster_primary_security_group_id
 }
 
@@ -48,25 +55,9 @@ output "cluster_security_group_id" {
   value       = module.eks.cluster_security_group_id
 }
 
-output "cluster_service_cidr" {
-  description = "The CIDR block where Kubernetes pod and service IP addresses are assigned from"
-  value       = module.eks.cluster_service_cidr
-}
-
-output "cluster_status" {
-  description = "Status of the EKS cluster (CREATING, ACTIVE, DELETING, FAILED)"
-  value       = module.eks.cluster_status
-}
-
-output "cluster_version" {
-  description = "The Kubernetes version for the cluster"
-  value       = module.eks.cluster_version
-}
-
-#  SECURITY AND ACCESS
-output "cluster_tls_certificate_sha1_fingerprint" {
-  description = "The SHA1 fingerprint of the public key of the cluster's certificate"
-  value       = module.eks.cluster_tls_certificate_sha1_fingerprint
+output "node_security_group_id" {
+  description = "ID of the node shared security group"
+  value       = module.eks.node_security_group_id
 }
 
 output "oidc_provider_arn" {
@@ -74,53 +65,63 @@ output "oidc_provider_arn" {
   value       = module.eks.oidc_provider_arn
 }
 
+# =============================================================================
+# NODE GROUPS
+# =============================================================================
+
+output "node_groups" {
+  description = "Map of EKS managed node groups"
+  value = {
+    for name, ng in aws_eks_node_group.this : name => {
+      arn            = ng.arn
+      id             = ng.id
+      status         = ng.status
+      capacity_type  = ng.capacity_type
+      instance_types = ng.instance_types
+      scaling_config = ng.scaling_config
+    }
+  }
+}
+
+output "node_group_asg_names" {
+  description = "Map of node group key => ASG name, for use in aws_autoscaling_attachment"
+  value = {
+    for name, ng in aws_eks_node_group.this : name => ng.resources[0].autoscaling_groups[0].name
+  }
+}
+
+output "node_group_role_arn" {
+  description = "IAM role ARN for node groups"
+  value       = aws_iam_role.node_group.arn
+}
+
+# =============================================================================
+# EBS CSI DRIVER
+# =============================================================================
+
 output "ebs_csi_irsa_role_arn" {
   description = "IAM role ARN for the EBS CSI driver service account"
   value       = module.ebs_csi_irsa_role.iam_role_arn
 }
 
-# NODE GROUPS
-output "eks_managed_node_groups" {
-  description = "Map of attribute maps for all EKS managed node groups created"
-  value       = module.eks.eks_managed_node_groups
-}
-
-output "eks_managed_node_groups_autoscaling_group_names" {
-  description = "List of the autoscaling group names created by EKS managed node groups"
-  value       = module.eks.eks_managed_node_groups_autoscaling_group_names
-}
-
-output "node_security_group_arn" {
-  description = "Amazon Resource Name (ARN) of the node shared security group"
-  value       = module.eks.node_security_group_arn
-}
-
-output "node_security_group_id" {
-  description = "ID of the node shared security group"
-  value       = module.eks.node_security_group_id
-}
-
+# =============================================================================
 # PLATFORM SUMMARY
+# =============================================================================
+
 output "platform_summary" {
   description = "Comprehensive summary of the EKS platform deployment"
   value = {
-    # Cluster information
     cluster_name    = module.eks.cluster_name
     cluster_version = module.eks.cluster_version
     cluster_region  = var.region
     environment     = var.environment
+    vpc_id          = var.vpc_id
 
-    # Network configuration
-    vpc_id           = var.vpc_id
-    platform_subnets = length(var.platform_subnet_ids)
-
-    # Security configuration  
     endpoint_access = {
       public  = var.enable_public_access
       private = true
     }
 
-    # Features enabled
     addons_enabled = {
       coredns            = true
       vpc_cni            = true
@@ -129,41 +130,14 @@ output "platform_summary" {
       pod_identity_agent = true
     }
 
-    logging_enabled = true
-    irsa_enabled    = true
-
-    # Node groups summary
-    node_groups_enabled = {
+    node_groups = {
       for name, config in var.node_groups : name => {
         client         = config.client
         instance_types = config.instance_types
-        capacity       = "${config.min_size}-${config.max_size}"
+        scaling        = "${config.min_size}-${config.max_size}"
         desired        = config.desired_size
+        capacity_type  = config.capacity_type
       }
     }
-
-    # Infrastructure standards applied
-    infrastructure_standards = {
-      naming_convention  = "applied"
-      tagging_standards  = "applied"
-      security_hardening = "applied"
-      monitoring_enabled = "applied"
-      backup_configured  = "applied"
-    }
-  }
-}
-
-# SECURITY NOTICE
-output "security_notice" {
-  description = "Important security information for the EKS cluster"
-  value = {
-    message = "EKS Cluster deployed with security best practices"
-    actions_required = [
-      "Configure kubectl access using: aws eks update-kubeconfig --region ${var.region} --name ${module.eks.cluster_name}",
-      "Verify node groups are healthy: kubectl get nodes",
-      "Review security groups and NACLs for compliance",
-      "Configure additional monitoring and alerting as needed"
-    ]
-    documentation = "https://docs.aws.amazon.com/eks/latest/userguide/"
   }
 }

@@ -7,9 +7,9 @@
 # ============================================================================
 
 clients = {
-  client-a = {
+  zam = {
     enabled     = true
-    client_code = "CLNT-A"
+    client_code = "CLNT-ZAM"
     tier        = "premium"
     
     # ========================================================================
@@ -52,10 +52,10 @@ clients = {
       enabled        = true
       instance_types = ["m5.large", "m5a.large", "t3.xlarge"]
       min_size       = 1
-      max_size       = 5
+      max_size       = 2
       desired_size   = 2
       disk_size      = 20
-      capacity_type  = "ON_DEMAND"  # or "SPOT"
+      capacity_type  = "SPOT"  # ON-DEMAND or "SPOT"
     }
     
     # ========================================================================
@@ -63,7 +63,7 @@ clients = {
     # ========================================================================
     alb = {
       enabled                      = true
-      type                         = "both"  # Options: "internet-facing", "internal", "both"
+      type                         = "internet-facing"  # Options: "internet-facing", "internal", "both"
       https_external_port          = 30443  # Custom HTTPS port
       http_external_port           = 30080  # Custom HTTP port
       https_nodeport               = 30443  # EKS NodePort for HTTPS
@@ -88,7 +88,7 @@ clients = {
     # NO ZONE IDs NEEDED! Just specify your domain name
     dns = {
       enabled                  = true
-      domain_name              = "client-a.xyz"             # Layer 05 creates this zone
+      domain_name              = "zam.xyz"             # Layer 05 creates this zone
       public_subdomain         = "app"                      # → app.client-a.xyz
       internal_subdomain       = "internal"                 # → internal.client-a.xyz
       create_route53_records   = true                       # Auto-create DNS records
@@ -133,104 +133,104 @@ clients = {
     }
   }
 
-  client-b = {
-    enabled     = true
-    client_code = "CLNT-B"
-    tier        = "standard"
+  # client-b = {
+  #   enabled     = true
+  #   client_code = "CLNT-B"
+  #   tier        = "standard"
     
-    # Network
-    network = {
-      vpc_cidr = "172.16.0.0/16"
-    }
+  #   # Network
+  #   network = {
+  #     vpc_cidr = "172.16.0.0/16"
+  #   }
     
-    # Security
-    security = {
-      custom_ports   = [8080, 9000, 3000, 5000]
-      database_ports = [5432, 5433, 5434, 5435]
-    }
+  #   # Security
+  #   security = {
+  #     custom_ports   = [8080, 9000, 3000, 5000]
+  #     database_ports = [5432, 5433, 5434, 5435]
+  #   }
     
-    # VPN - Disabled for this client
-    vpn = {
-      enabled             = false
-      customer_gateway_ip = ""
-      bgp_asn             = 0
-      amazon_side_asn     = 0
-      local_network_cidr  = ""
-      tunnel1_inside_cidr = ""
-      tunnel2_inside_cidr = ""
-      static_routes_only  = false
-      description         = ""
-    }
+  #   # VPN - Disabled for this client
+  #   vpn = {
+  #     enabled             = false
+  #     customer_gateway_ip = ""
+  #     bgp_asn             = 0
+  #     amazon_side_asn     = 0
+  #     local_network_cidr  = ""
+  #     tunnel1_inside_cidr = ""
+  #     tunnel2_inside_cidr = ""
+  #     static_routes_only  = false
+  #     description         = ""
+  #   }
     
-    # EKS
-    eks = {
-      enabled        = true
-      instance_types = ["t3.large", "t3.xlarge"]
-      min_size       = 1
-      max_size       = 3
-      desired_size   = 1
-      disk_size      = 20
-      capacity_type  = "SPOT"  # Cost savings for standard tier
-    }
+  #   # EKS
+  #   eks = {
+  #     enabled        = true
+  #     instance_types = ["t3.large", "t3.xlarge"]
+  #     min_size       = 1
+  #     max_size       = 3
+  #     desired_size   = 1
+  #     disk_size      = 20
+  #     capacity_type  = "SPOT"  # Cost savings for standard tier
+  #   }
     
-    # ALB Configuration - Internal only for standard tier
-    alb = {
-      enabled                      = true
-      type                         = "internal"  # Internal ALB only (no public access)
-      https_external_port          = 30443
-      http_external_port           = 30080
-      https_nodeport               = 30443
-      http_nodeport                = 30080
-      redirect_http_to_https       = true
-      enable_deletion_protection   = false  # Standard tier = lower protection
-      enable_access_logs           = true
-      enable_waf                   = false  # No WAF for internal ALB
-      enable_sticky_sessions       = false
-      ssl_policy                   = "ELBSecurityPolicy-TLS13-1-2-2021-06"
-      ssl_certificate_arn          = "arn:aws:acm:us-east-2:123456789012:certificate/client-b-cert"
-      ssl_certificate_arn_internal = null
-      allowed_cidr_blocks_public   = []  # No public access
-      allowed_cidr_blocks_internal = ["10.0.0.0/16", "172.16.0.0/12"]  # VPN networks
-      health_check_path            = "/healthz/ready"
-    }
+  #   # ALB Configuration - Internal only for standard tier
+  #   alb = {
+  #     enabled                      = true
+  #     type                         = "internal"  # Internal ALB only (no public access)
+  #     https_external_port          = 30443
+  #     http_external_port           = 30080
+  #     https_nodeport               = 30443
+  #     http_nodeport                = 30080
+  #     redirect_http_to_https       = true
+  #     enable_deletion_protection   = false  # Standard tier = lower protection
+  #     enable_access_logs           = true
+  #     enable_waf                   = false  # No WAF for internal ALB
+  #     enable_sticky_sessions       = false
+  #     ssl_policy                   = "ELBSecurityPolicy-TLS13-1-2-2021-06"
+  #     ssl_certificate_arn          = "arn:aws:acm:us-east-2:123456789012:certificate/client-b-cert"
+  #     ssl_certificate_arn_internal = null
+  #     allowed_cidr_blocks_public   = []  # No public access
+  #     allowed_cidr_blocks_internal = ["10.0.0.0/16", "172.16.0.0/12"]  # VPN networks
+  #     health_check_path            = "/healthz/ready"
+  #   }
     
-    # DNS Configuration - Smart Auto-Discovery (Internal ALB only)
-    dns = {
-      enabled                  = true
-      domain_name              = "client-b.xyz"             # Layer 05 creates this zone
-      public_subdomain         = "app"                      # Not used (internal only)
-      internal_subdomain       = "vpn"                      # → vpn.client-b.xyz
-      create_route53_records   = true                       # Auto-create DNS records
-      evaluate_target_health   = true                       # Enable ALB health checks
-    }
+  #   # DNS Configuration - Smart Auto-Discovery (Internal ALB only)
+  #   dns = {
+  #     enabled                  = true
+  #     domain_name              = "client-b.xyz"             # Layer 05 creates this zone
+  #     public_subdomain         = "app"                      # Not used (internal only)
+  #     internal_subdomain       = "vpn"                      # → vpn.client-b.xyz
+  #     create_route53_records   = true                       # Auto-create DNS records
+  #     evaluate_target_health   = true                       # Enable ALB health checks
+  #   }
     
-    # Database
-    database = {
-      enabled           = true
-      instance_type     = "t3.medium"
-      data_volume_size  = 50
-      wal_volume_size   = 25
-      backup_volume_size = 50
-      enable_replica    = false  # Single instance for standard tier
-    }
+  #   # Database
+  #   database = {
+  #     enabled           = true
+  #     instance_type     = "t3.medium"
+  #     data_volume_size  = 50
+  #     wal_volume_size   = 25
+  #     backup_volume_size = 50
+  #     enable_replica    = false  # Single instance for standard tier
+  #   }
     
-    # Compute
-    compute = {
-      enabled       = false  # Not needed for this client
-      instance_type = ""
-      instance_count = 0
-    }
+  #   # Compute
+  #   compute = {
+  #     enabled       = false  # Not needed for this client
+  #     instance_type = ""
+  #     instance_count = 0
+  #   }
     
-    # Metadata
-    metadata = {
-      full_name     = "Client B Corporation"
-      industry      = "technology"
-      contact_email = "ops@client-b.example.com"
-      compliance    = ["SOC2"]
-      cost_center   = "CC-002"
-      business_unit = "Innovation-Lab"
-    }
-  }
+  #   # Metadata
+  #   metadata = {
+  #     full_name     = "Client B Corporation"
+  #     industry      = "technology"
+  #     contact_email = "ops@client-b.example.com"
+  #     compliance    = ["SOC2"]
+  #     cost_center   = "CC-002"
+  #     business_unit = "Innovation-Lab"
+  #   }
+  # }
 }
 
 # ============================================================================

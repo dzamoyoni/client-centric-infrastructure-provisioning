@@ -5,6 +5,12 @@
 variable "client_id" {
   description = "Unique identifier for the client (e.g., client-a, client-b)"
   type        = string
+
+  validation {
+    condition     = length(var.client_id) >= 2 && length(var.client_id) <= 12
+    error_message = "client_id must be between 2 and 12 characters to keep ALB names within AWS's 32-character limit."
+  }
+
   
   validation {
     condition     = can(regex("^[a-z0-9-]+$", var.client_id))
@@ -13,12 +19,15 @@ variable "client_id" {
 }
 
 variable "environment" {
-  description = "Environment name (e.g., production, staging, development)"
+  description = "Environment name"
   type        = string
-  
   validation {
     condition     = contains(["production", "staging", "development", "dr"], var.environment)
     error_message = "Environment must be one of: production, staging, development, dr."
+  }
+  validation {
+    condition     = can(regex("^[a-z0-9-]+$", var.environment))
+    error_message = "environment must only contain lowercase letters, numbers, and hyphens."
   }
 }
 
@@ -193,11 +202,24 @@ variable "allowed_cidr_blocks_internal" {
   default     = ["10.0.0.0/8"]
 }
 
+variable "enable_waf" {
+  description = "Whether to associate a WAF ACL with the public ALB"
+  type        = bool
+  default     = false
+}
+
 variable "waf_acl_arn" {
-  description = "Optional: ARN of AWS WAF Web ACL to associate with public ALB"
+  description = "ARN of AWS WAF Web ACL to associate with public ALB. Required when enable_waf = true."
   type        = string
   default     = null
+
+  validation {
+    condition     = var.waf_acl_arn == null || can(regex("^arn:", var.waf_acl_arn))
+    error_message = "waf_acl_arn must be a valid ARN or null."
+  }
 }
+
+
 
 # ============================================================================
 # Session Configuration

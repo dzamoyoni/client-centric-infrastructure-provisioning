@@ -3,7 +3,6 @@
 # ============================================================================
 # Provides centralized internet egress for multiple VPCs via Transit Gateway
 # Features: HA NAT Gateways, VPC endpoints, flow logs, security controls
-# Cost: ~$90-126/month (2 NAT GWs + TGW attachment) vs $270/month (6 NAT GWs)
 # ============================================================================
 
 terraform {
@@ -285,10 +284,29 @@ resource "aws_security_group" "vpc_endpoints" {
 # VPC Flow Logs - Security & Monitoring
 # ============================================================================
 
+locals {
+  # Dynamically construct the role name using project name & region, or use custom override if provided
+  dynamic_flow_log_role_name = coalesce(
+    var.flow_log_role_name,
+    "${local.sanitized_project_name}-egress-vpc-flow-log-role-${var.region}"
+  )
+
+  # Resolve the active IAM Role ARN based on creation flag and flow log status
+  flow_log_role_arn = !var.enable_flow_logs ? null : (
+    var.create_flow_log_role ? aws_iam_role.flow_log[0].arn : data.aws_iam_role.existing_flow_log[0].arn
+  )
+
+  # Resolve active IAM Role ID/Name for policy attachment
+  flow_log_role_id = !var.enable_flow_logs ? null : (
+    var.create_flow_log_role ? aws_iam_role.flow_log[0].id : data.aws_iam_role.existing_flow_log[0].id
+  )
+}
+
+# 1. VPC Flow Log Resource
 resource "aws_flow_log" "egress" {
   count = var.enable_flow_logs ? 1 : 0
 
-  iam_role_arn    = aws_iam_role.flow_log[0].arn
+  iam_role_arn    = local.flow_log_role_arn
   log_destination = aws_cloudwatch_log_group.vpc_flow_log[0].arn
   traffic_type    = "ALL"
   vpc_id          = aws_vpc.egress.id
@@ -300,6 +318,7 @@ resource "aws_flow_log" "egress" {
   })
 }
 
+# 2. CloudWatch Log Group
 resource "aws_cloudwatch_log_group" "vpc_flow_log" {
   count = var.enable_flow_logs ? 1 : 0
 
@@ -314,10 +333,11 @@ resource "aws_cloudwatch_log_group" "vpc_flow_log" {
   })
 }
 
+# 3. Create IAM Role (Only if enabled AND create_flow_log_role is true)
 resource "aws_iam_role" "flow_log" {
-  count = var.enable_flow_logs ? 1 : 0
+  count = var.enable_flow_logs && var.create_flow_log_role ? 1 : 0
 
-  name = "${local.sanitized_project_name}-egress-vpc-flow-log-role-${var.region}"
+  name = local.dynamic_flow_log_role_name
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -339,11 +359,19 @@ resource "aws_iam_role" "flow_log" {
   })
 }
 
+# 4. Fetch Existing IAM Role (Only if enabled AND create_flow_log_role is false)
+data "aws_iam_role" "existing_flow_log" {
+  count = var.enable_flow_logs && !var.create_flow_log_role ? 1 : 0
+
+  name = local.dynamic_flow_log_role_name
+}
+
+# 5. Attach Policy (Only if creating a new role; skips if using existing role)
 resource "aws_iam_role_policy" "flow_log" {
-  count = var.enable_flow_logs ? 1 : 0
+  count = var.enable_flow_logs && var.create_flow_log_role ? 1 : 0
 
   name = "${local.sanitized_project_name}-egress-vpc-flow-log-policy"
-  role = aws_iam_role.flow_log[0].id
+  role = local.flow_log_role_id
 
   policy = jsonencode({
     Version = "2012-10-17"

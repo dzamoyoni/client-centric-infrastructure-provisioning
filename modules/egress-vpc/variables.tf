@@ -91,3 +91,15 @@ variable "flow_log_retention_days" {
     error_message = "Flow log retention must be a valid CloudWatch Logs retention period."
   }
 }
+
+variable "create_flow_log_role" {
+  description = "Set to true to create a new IAM role, or false to use an existing one."
+  type        = bool
+  default     = true
+}
+
+variable "flow_log_role_name" {
+  description = "Custom name for the IAM role. If left null, a name is dynamically generated using the project name and region."
+  type        = string
+  default     = null
+}

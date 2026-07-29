@@ -25,7 +25,7 @@ terraform {
   required_providers {
     aws = {
       source  = "hashicorp/aws"
-      version = "~> 5.0"
+      version = "~> 6.0"
     }
   }
 }
@@ -41,6 +41,18 @@ locals {
   
   # Common naming prefix
   name_prefix = "${var.client_id}-${var.environment}"
+
+  _name_length_check = (
+  length("${var.client_id}-${var.environment}-internal-alb") <= 32
+  ? true
+  : tobool("ERROR: ALB name '${var.client_id}-${var.environment}-internal-alb' exceeds 32 characters...")
+  )
+
+  _waf_config_check = (
+  !var.enable_waf || var.waf_acl_arn != null
+  ? true
+  : tobool("ERROR: enable_waf is true but waf_acl_arn is null. Provide a WAF ACL ARN.")
+  )
   
   # Common tags for all resources
   common_tags = merge(
@@ -61,7 +73,8 @@ locals {
 resource "aws_lb" "internet_facing" {
   count = local.create_internet_facing ? 1 : 0
   
-  name               = length("${local.name_prefix}-public-alb") <=32
+  # name               = length("${local.name_prefix}-public-alb") <=32
+  name = "${local.name_prefix}-public-alb"
   internal           = false
   load_balancer_type = "application"
   security_groups    = [aws_security_group.alb_public[0].id]
@@ -98,7 +111,8 @@ resource "aws_lb" "internet_facing" {
 resource "aws_lb" "internal" {
   count = local.create_internal ? 1 : 0
   
-  name               = length("${local.name_prefix}-internal-alb") <=32
+  # name               = length("${local.name_prefix}-internal-alb") <=32
+  name = "${local.name_prefix}-internal-alb"
   internal           = true
   load_balancer_type = "application"
   security_groups    = [aws_security_group.alb_internal[0].id]
@@ -620,7 +634,9 @@ resource "aws_security_group_rule" "eks_from_internal_alb_http" {
 # ============================================================================
 
 resource "aws_wafv2_web_acl_association" "public_alb" {
-  count = local.create_internet_facing && var.waf_acl_arn != null ? 1 : 0
+  # count = local.create_internet_facing && var.waf_acl_arn != null ? 1 : 0
+  count = local.create_internet_facing && var.enable_waf ? 1 : 0
+
   
   resource_arn = aws_lb.internet_facing[0].arn
   web_acl_arn  = var.waf_acl_arn

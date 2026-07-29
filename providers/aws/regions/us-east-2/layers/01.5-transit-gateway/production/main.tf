@@ -44,7 +44,7 @@ provider "aws" {
 data "terraform_remote_state" "foundation" {
   backend = "s3"
   config = {
-    bucket = "terraform-state-${var.region}-${var.environment}"
+    bucket = "terraform-state-${var.region}-${var.environment}-myorg"
     key    = "${var.region}/01-foundation/${var.environment}/terraform.tfstate"
     region = var.region
   }
@@ -55,9 +55,6 @@ data "terraform_remote_state" "foundation" {
 # ============================================================================
 
 locals {
-  # Sanitize organization name for resource naming (remove spaces)
-  project_name = replace(lower(data.terraform_remote_state.foundation.outputs.organization_name), " ", "-")
-  
   # VPC IDs from Layer 01 (client-centric architecture - no foundation VPC)
   egress_vpc_id  = data.terraform_remote_state.foundation.outputs.egress_vpc_id
   client_vpc_ids = data.terraform_remote_state.foundation.outputs.client_vpc_ids
@@ -83,16 +80,15 @@ module "layer_config" {
 }
 
 # ============================================================================
-# Simplified Tagging Configuration (85% reduction)
+# Tagging Configuration
 # ============================================================================
 
 module "tags" {
   source = "../../../../../../../modules/tagging"
   
   # Core identification
-  organization_name = local.project_name
-  environment       = var.environment
-  region            = var.region
+  environment = var.environment
+  region      = var.region
   
   # Layer-specific from shared-config module
   layer_name         = module.layer_config.layer_name
@@ -119,7 +115,7 @@ module "tags" {
 module "transit_gateway" {
   source = "../../../../../../../modules/transit-gateway"
   
-  name        = "${local.project_name}-tgw-${var.region}"
+  name        = "tgw-${var.region}"
   description = "Centralized Transit Gateway for multi-VPC architecture with egress to Egress VPC"
   # Use minimal_tags to stay under AWS 50-tag limit
   common_tags = module.tags.minimal_tags
@@ -142,7 +138,7 @@ module "transit_gateway" {
         transit_gateway_default_route_table_association = false
         transit_gateway_default_route_table_propagation = false
         tags = {
-          Name   = "${local.project_name}-tgw-attach-egress"
+          Name   = "tgw-attach-egress-${var.region}"
           VPCType = "Egress"
         }
       }
@@ -157,7 +153,7 @@ module "transit_gateway" {
         transit_gateway_default_route_table_association = false
         transit_gateway_default_route_table_propagation = false
         tags = {
-          Name       = "${local.project_name}-${client_name}-tgw-attach"
+          Name       = "${client_name}-tgw-attach-${var.region}"
           VPCType    = "Client"
           ClientName = client_name
         }
@@ -171,7 +167,7 @@ module "transit_gateway" {
     spoke = {
       description = "Route table for spoke VPCs (Foundation + Clients)"
       tags = {
-        Name    = "${local.project_name}-tgw-rt-spoke"
+        Name    = "tgw-rt-spoke-${var.region}"
         Purpose = "Routes traffic from spokes to Egress VPC"
       }
     }
@@ -180,7 +176,7 @@ module "transit_gateway" {
     egress = {
       description = "Route table for Egress VPC"
       tags = {
-        Name    = "${local.project_name}-tgw-rt-egress"
+        Name    = "tgw-rt-egress-${var.region}"
         Purpose = "Routes return traffic from Egress VPC to spokes"
       }
     }
@@ -256,29 +252,28 @@ module "transit_gateway" {
 # Client VPC Routes to Transit Gateway (DYNAMIC)
 # ----------------------------------------------------------------------------
 # Automatically creates routes for ALL enabled clients from Layer 01
-# EXCEPT VPN-enabled clients (they use VPN Gateway for routing)
+# INCLUDING VPN-enabled clients.
+#
+# VPN + TGW coexistence:
+#   - VPN Gateway propagates on-premises CIDRs (e.g., 10.x.x.x/16 → VPN GW)
+#   - TGW provides internet egress (0.0.0.0/0 → TGW → Egress VPC → NAT)
+#   - No conflict: VPN handles specific on-prem routes, TGW handles default route
+#   - AWS route tables support both simultaneously (more-specific routes win)
 #
 # When a new client is added:
 #   1. Layer 01 creates VPC + route tables
 #   2. Layer 01.5 reads outputs and automatically creates routes
 #   3. New client immediately has internet access via TGW → Egress VPC
 #
-# VPN-Enabled Clients:
-#   - VPN Gateway route propagation handles their routing (Layer 01)
-#   - On-premises CIDR → VPN Gateway (automatic via route propagation)
-#   - Internet 0.0.0.0/0 → Can be manually added if needed
-#   - This layer SKIPS them to avoid route conflicts
-#
 # Supports multiple route tables per client (typically one per AZ)
 
 locals {
-  # Get list of VPN-enabled clients from Layer 01
-  # These clients manage their own routing via VPN Gateway route propagation
+  # Get list of VPN-enabled clients from Layer 01 (for reference/outputs only)
   vpn_enabled_clients = try(data.terraform_remote_state.foundation.outputs.vpn_enabled_clients, [])
   
   # Flatten client route tables into a single map for for_each
   # Format: { "client-a-0" => "rtb-xxx", "client-a-1" => "rtb-yyy" }
-  # EXCLUDE VPN-enabled clients - they handle routing via VPN Gateway
+  # ALL clients get TGW routes — VPN clients also need internet egress via TGW
   client_route_tables = {
     for pair in flatten([
       for client_name, route_table_ids in data.terraform_remote_state.foundation.outputs.client_private_route_table_ids : [
@@ -287,12 +282,14 @@ locals {
           client_name    = client_name
           route_table_id = rt_id
         }
-        # Skip VPN-enabled clients - VPN Gateway manages their routing
-        if !contains(local.vpn_enabled_clients, client_name)
       ]
     ]) : pair.key => pair
   }
 }
+
+
+
+
 
 resource "aws_route" "client_private_to_tgw" {
   for_each = local.client_route_tables
@@ -354,6 +351,39 @@ resource "aws_route" "client_eks_to_tgw" {
   }
 }
 
+
+locals {
+  egress_private_route_table_ids = data.terraform_remote_state.foundation.outputs.egress_private_route_table_ids
+  
+  # Create a flat map: one entry per (route_table, client_cidr) pair
+  egress_return_routes = {
+    for pair in flatten([
+      for rt_id in local.egress_private_route_table_ids : [
+        for client_name, cidr in local.client_vpc_cidrs : {
+          key            = "${client_name}-via-rt-${rt_id}"
+          route_table_id = rt_id
+          cidr           = cidr
+        }
+      ]
+    ]) : pair.key => pair
+  }
+}
+
+
+resource "aws_route" "egress_to_client_vpcs" {
+  for_each = local.egress_return_routes
+
+  route_table_id         = each.value.route_table_id
+  destination_cidr_block = each.value.cidr
+  transit_gateway_id     = module.transit_gateway.transit_gateway_id
+
+  depends_on = [module.transit_gateway]
+
+  timeouts {
+    create = "5m"
+    delete = "5m"
+  }
+}
 # ----------------------------------------------------------------------------
 # Database Subnet Routes to Transit Gateway (DYNAMIC)
 # ----------------------------------------------------------------------------

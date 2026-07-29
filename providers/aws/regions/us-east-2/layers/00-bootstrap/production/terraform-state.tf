@@ -40,7 +40,7 @@ resource "aws_kms_alias" "terraform_state" {
 module "terraform_state_bucket" {
   source = "../../../../../../../modules/s3"
 
-  bucket_name = "terraform-state-${var.region}-${var.environment}"
+  bucket_name = "terraform-state-${var.region}-${var.environment}-${var.organization_name}"
 
   # Versioning REQUIRED for state recovery
   versioning_enabled = true

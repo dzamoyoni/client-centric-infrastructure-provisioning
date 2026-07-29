@@ -63,3 +63,27 @@ variable "transit_gateway_flow_log_retention_days" {
     error_message = "Flow log retention must be a valid CloudWatch Logs retention period."
   }
 }
+
+# ============================================================================
+# Client Configuration 
+# ============================================================================
+
+variable "clients" {
+  description = "Client configurations from centralized /clients.auto.tfvars"
+  type = map(object({
+    enabled     = bool
+    client_code = string
+    tier        = string
+    network = object({
+      vpc_cidr = string
+    })
+    metadata = object({
+      full_name     = string
+      industry      = string
+      contact_email = string
+      compliance    = list(string)
+      cost_center   = string
+      business_unit = string
+    })
+  }))
+}

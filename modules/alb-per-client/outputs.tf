@@ -150,14 +150,40 @@ output "alb_endpoints" {
   }
 }
 
+
+# output "target_group_arns" {
+#   description = "All target group ARNs for attaching to EKS Auto Scaling Groups"
+#   value = compact([
+#     try(aws_lb_target_group.https_public[0].arn, ""),
+#     try(aws_lb_target_group.http_public[0].arn, ""),
+#     try(aws_lb_target_group.https_internal[0].arn, ""),
+#     try(aws_lb_target_group.http_internal[0].arn, ""),
+#   ])
+# }
+
+# Instead of a flat list of ARNs (computed values as keys)
 output "target_group_arns" {
-  description = "All target group ARNs for attaching to EKS Auto Scaling Groups"
   value = compact([
-    try(aws_lb_target_group.https_public[0].arn, ""),
-    try(aws_lb_target_group.http_public[0].arn, ""),
-    try(aws_lb_target_group.https_internal[0].arn, ""),
-    try(aws_lb_target_group.http_internal[0].arn, ""),
+    one(aws_lb_target_group.https_public[*].arn),
+    one(aws_lb_target_group.http_public[*].arn),
+    one(aws_lb_target_group.https_internal[*].arn),
+    one(aws_lb_target_group.http_internal[*].arn),
   ])
+}
+
+# Add a structured map with STATIC keys, ARNs only in values
+output "target_group_map" {
+  description = "Map of target groups with static keys for safe for_each usage"
+  value = merge(
+    local.create_internet_facing ? {
+      "https-public" = aws_lb_target_group.https_public[0].arn
+      "http-public"  = aws_lb_target_group.http_public[0].arn
+    } : {},
+    local.create_internal ? {
+      "https-internal" = aws_lb_target_group.https_internal[0].arn
+      "http-internal"  = aws_lb_target_group.http_internal[0].arn
+    } : {}
+  )
 }
 
 output "alb_configuration_summary" {

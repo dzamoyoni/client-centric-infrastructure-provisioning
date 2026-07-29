@@ -19,33 +19,82 @@
 # ============================================================================
 
 # ============================================================================
-# Data Sources - Discover Route53 Zones by Domain Name
+# Data Sources - Check Zone Existence Before Lookup
 # ============================================================================
-# Automatically lookup zones created by Layer 05
-# If zone doesn't exist, data source returns empty and DNS creation is skipped
+# Use external data source to check if zones exist (won't fail if missing)
+# This allows Layer 02 to run before Layer 05 creates the zones
 
-data "aws_route53_zone" "client_zones" {
+data "external" "check_zone_exists" {
   for_each = {
     for name, config in local.enabled_alb_clients : name => config
-    if try(config.dns.enabled, false) && 
+    if try(config.dns.enabled, false) &&
        try(config.dns.create_route53_records, false) &&
        try(config.dns.domain_name, "") != ""
   }
-  
+
+  program = ["bash", "-c", <<-EOF
+    ZONE_ID=$(aws route53 list-hosted-zones-by-name \
+      --dns-name "${each.value.dns.domain_name}" \
+      --max-items 1 \
+      --query "HostedZones[?Name=='${each.value.dns.domain_name}.'].Id | [0]" \
+      --output text 2>/dev/null || echo "")
+    
+    if [[ "$ZONE_ID" != "None" && "$ZONE_ID" != "" && "$ZONE_ID" != "null" ]]; then
+      # Extract just the zone ID (remove /hostedzone/ prefix)
+      ZONE_ID=$(echo "$ZONE_ID" | sed 's|/hostedzone/||')
+      echo "{\"exists\": \"true\", \"zone_id\": \"$ZONE_ID\"}"
+    else
+      echo "{\"exists\": \"false\", \"zone_id\": \"\"}"
+    fi
+  EOF
+  ]
+}
+
+# Only lookup zones that are confirmed to exist
+data "aws_route53_zone" "client_zones" {
+  for_each = {
+    for name, result in data.external.check_zone_exists : name => local.enabled_alb_clients[name]
+    if result.result.exists == "true"
+  }
+
   name         = each.value.dns.domain_name
   private_zone = false
 }
 
-# Optional: Lookup private zones if specified
-data "aws_route53_zone" "client_private_zones" {
+# Check private zone existence
+data "external" "check_private_zone_exists" {
   for_each = {
     for name, config in local.enabled_alb_clients : name => config
-    if try(config.dns.enabled, false) && 
+    if try(config.dns.enabled, false) &&
        try(config.dns.create_route53_records, false) &&
        try(config.dns.private_zone_domain_name, "") != "" &&
        config.dns.private_zone_domain_name != null
   }
-  
+
+  program = ["bash", "-c", <<-EOF
+    ZONE_ID=$(aws route53 list-hosted-zones-by-name \
+      --dns-name "${each.value.dns.private_zone_domain_name}" \
+      --max-items 1 \
+      --query "HostedZones[?Name=='${each.value.dns.private_zone_domain_name}.' && Config.PrivateZone==\`true\`].Id | [0]" \
+      --output text 2>/dev/null || echo "")
+    
+    if [[ "$ZONE_ID" != "None" && "$ZONE_ID" != "" && "$ZONE_ID" != "null" ]]; then
+      ZONE_ID=$(echo "$ZONE_ID" | sed 's|/hostedzone/||')
+      echo "{\"exists\": \"true\", \"zone_id\": \"$ZONE_ID\"}"
+    else
+      echo "{\"exists\": \"false\", \"zone_id\": \"\"}"
+    fi
+  EOF
+  ]
+}
+
+# Only lookup private zones that exist
+data "aws_route53_zone" "client_private_zones" {
+  for_each = {
+    for name, result in data.external.check_private_zone_exists : name => local.enabled_alb_clients[name]
+    if result.result.exists == "true"
+  }
+
   name         = each.value.dns.private_zone_domain_name
   private_zone = true
 }
@@ -55,15 +104,23 @@ data "aws_route53_zone" "client_private_zones" {
 # ============================================================================
 
 locals {
-  # Track which zones were successfully discovered
+  # Track which zones were successfully discovered using external check results
   discovered_zones = {
     for name, config in local.enabled_alb_clients : name => {
-      public_zone_discovered  = contains(keys(data.aws_route53_zone.client_zones), name)
-      private_zone_discovered = contains(keys(data.aws_route53_zone.client_private_zones), name)
-      
+      # Use the external check results (won't fail if zone doesn't exist)
+      public_zone_discovered = try(
+        data.external.check_zone_exists[name].result.exists == "true",
+        false
+      )
+      private_zone_discovered = try(
+        data.external.check_private_zone_exists[name].result.exists == "true",
+        false
+      )
+
+      # Get zone IDs from the actual data source (only populated if zone exists)
       public_zone_id  = try(data.aws_route53_zone.client_zones[name].zone_id, "")
       private_zone_id = try(data.aws_route53_zone.client_private_zones[name].zone_id, "")
-      
+
       # Fallback: Use public zone for internal records if no private zone
       internal_zone_id = try(
         data.aws_route53_zone.client_private_zones[name].zone_id,
@@ -71,22 +128,23 @@ locals {
         ""
       )
     }
+    if try(config.dns.enabled, false) && try(config.dns.create_route53_records, false)
   }
-  
-  # Clients ready for DNS record creation
+
+  # Clients ready for DNS record creation (zone exists)
   clients_ready_for_dns = {
     for name, config in local.enabled_alb_clients : name => config
     if try(config.dns.enabled, false) &&
        try(config.dns.create_route53_records, false) &&
-       local.discovered_zones[name].public_zone_discovered
+       try(local.discovered_zones[name].public_zone_discovered, false)
   }
-  
+
   # Clients waiting for Layer 05 (zones not found)
   clients_waiting_for_zones = [
     for name, config in local.enabled_alb_clients : name
     if try(config.dns.enabled, false) &&
        try(config.dns.create_route53_records, false) &&
-       !local.discovered_zones[name].public_zone_discovered
+       !try(local.discovered_zones[name].public_zone_discovered, false)
   ]
 }
 
@@ -182,9 +240,7 @@ output "dns_zone_discovery_status" {
       private_zone_found = status.private_zone_discovered
       public_zone_id     = status.public_zone_id
       private_zone_id    = status.private_zone_id
-      status_message     = status.public_zone_discovered ? 
-        "Zone discovered - DNS records created" : 
-        "Zone not found - Deploy Layer 05 first"
+      status_message = status.public_zone_discovered ? "Zone discovered - DNS records created" : "Zone not found - Deploy Layer 05 first"
     }
     if contains(keys(local.enabled_alb_clients), name) &&
        try(local.enabled_alb_clients[name].dns.enabled, false)
@@ -235,11 +291,7 @@ output "client_endpoints" {
       alb_internal_dns = try(module.client_alb[name].internal_alb_dns_name, null)
       
       # Status
-      dns_status = try(config.dns.enabled, false) ? (
-        local.discovered_zones[name].public_zone_discovered ? 
-          "DNS records active" : 
-          "Waiting for Route53 zone (deploy Layer 05)"
-      ) : "DNS disabled"
+      dns_status = try(config.dns.enabled, false) ? (local.discovered_zones[name].public_zone_discovered ? "DNS records active" : "Waiting for Route53 zone (deploy Layer 05)") : "DNS disabled"
     }
   }
 }

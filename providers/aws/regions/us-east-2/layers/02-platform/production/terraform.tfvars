@@ -7,16 +7,17 @@
 environment  = "production"
 region       = "us-east-2"
 
-# Terraform State
-terraform_state_bucket = "ohio-01-terraform-state-production"
+# Terraform State (for reading Foundation layer remote state)
+terraform_state_bucket = "terraform-state-us-east-2-production-myorg"
 terraform_state_region = "us-east-2"
 
 # EKS Configuration
-cluster_version = "1.31"
+cluster_version = "1.35"
 
 # Management Access
 enable_public_access = true
 management_cidr_blocks = [
   "41.72.206.78/32",
-  "102.217.4.85/32"
+  "102.217.4.85/32",
+  "102.68.79.205/32"
 ]

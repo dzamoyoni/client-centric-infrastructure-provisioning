@@ -21,6 +21,29 @@ terraform {
   }
 }
 
+
+# ============================================================================
+# VPC - Locals
+# ============================================================================
+
+locals {
+  eks_required_endpoints = {
+    sts              = "com.amazonaws.${var.region}.sts"
+    ec2              = "com.amazonaws.${var.region}.ec2"
+    ec2messages      = "com.amazonaws.${var.region}.ec2messages"
+    ssm              = "com.amazonaws.${var.region}.ssm"
+    ssmmessages      = "com.amazonaws.${var.region}.ssmmessages"
+    autoscaling      = "com.amazonaws.${var.region}.autoscaling"
+    logs             = "com.amazonaws.${var.region}.logs"
+    elasticloadbalancing = "com.amazonaws.${var.region}.elasticloadbalancing"
+    eks              = "com.amazonaws.${var.region}.eks"
+  }
+}
+
+
+
+
+
 # ============================================================================
 # VPC - Client-Dedicated Network
 # ============================================================================
@@ -619,5 +642,23 @@ resource "aws_iam_role_policy" "flow_log" {
         Resource = "*"
       }
     ]
+  })
+}
+
+# VPC Endpoints
+resource "aws_vpc_endpoint" "eks_required" {
+  for_each = local.eks_required_endpoints
+
+  vpc_id              = aws_vpc.client.id
+  service_name        = each.value
+  vpc_endpoint_type   = "Interface"
+  subnet_ids          = aws_subnet.eks[*].id
+  security_group_ids  = [aws_security_group.vpc_endpoints.id]
+  private_dns_enabled = true
+
+  tags = merge(var.common_tags, {
+    Name    = "${var.client_name}-${each.key}-endpoint"
+    Purpose = "EKS Required VPC Endpoint"
+    Client  = var.client_name
   })
 }
