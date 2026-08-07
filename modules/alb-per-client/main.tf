@@ -87,12 +87,15 @@ resource "aws_lb" "internet_facing" {
   
   drop_invalid_header_fields = true
   
-  access_logs {
-    bucket  = var.access_logs_bucket
-    prefix  = "${var.client_id}/public-alb"
-    enabled = var.enable_access_logs
-  }
-  
+#   dynamic "access_logs" {
+#   for_each = var.enable_access_logs ? [1] : []
+
+#   content {
+#     enabled = true
+#     bucket  = var.access_logs_bucket
+#     prefix  = "${var.client_id}/public-alb"
+#   }
+# }
   tags = merge(
     local.common_tags,
     {

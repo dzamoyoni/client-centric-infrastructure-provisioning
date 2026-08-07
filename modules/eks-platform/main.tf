@@ -90,19 +90,25 @@ module "eks" {
 
   # Core addons only (before node groups exist)
   addons = {
-    coredns = {
-      most_recent = true
-      resolve_conflicts = "OVERWRITE"
-      # configuration_values = jsonencode({
-      #   tolerations = [
-      #     {
-      #       key      = "node.kubernetes.io/not-ready"
-      #       operator = "Exists"
-      #       effect   = "NoSchedule"
-      #     }
-      #   ]
-      # })
-    }
+    # coredns = {
+    #   before_compute = true
+    #   most_recent = true
+    #   resolve_conflicts_on_create = "OVERWRITE"
+    #   resolve_conflicts_on_update = "OVERWRITE"
+    #   timeouts = {
+    #     create = "1m"
+    #     update = "1m"
+    #   }
+    #   # configuration_values = jsonencode({
+    #   #   tolerations = [
+    #   #     {
+    #   #       key      = "node.kubernetes.io/not-ready"
+    #   #       operator = "Exists"
+    #   #       effect   = "NoSchedule"
+    #   #     }
+    #   #   ]
+    #   # })
+    # }
     eks-pod-identity-agent = {
       most_recent = true
       resolve_conflicts = "OVERWRITE"

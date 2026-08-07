@@ -85,7 +85,7 @@ variable "vpc_attachments" {
     # Optional settings
     dns_support                                     = optional(bool, true)
     ipv6_support                                    = optional(bool, false)
-    appliance_mode_support                          = optional(bool, true) # Defaulted to true to prevent multi-AZ return drops
+    appliance_mode_support                          = optional(bool, false)
     transit_gateway_default_route_table_association = optional(bool, true)
     transit_gateway_default_route_table_propagation = optional(bool, true)
     tags                                            = optional(map(string), {})

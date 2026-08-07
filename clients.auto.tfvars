@@ -34,13 +34,13 @@ clients = {
     # ========================================================================
     # Only configure if client requires Site-to-Site VPN
     vpn = {
-      enabled             = true
-      customer_gateway_ip = "203.0.113.10"       # Client's firewall public IP
+      enabled             = false
+      customer_gateway_ip = "Customer-gateway-ip"       # Client's firewall public IP
       bgp_asn             = 65001                # Client's BGP ASN
       amazon_side_asn     = 64512                # AWS side BGP ASN
       local_network_cidr  = "10.0.0.0/16"        # Client's on-premises network
-      tunnel1_inside_cidr = "169.254.10.0/30"    # VPN tunnel 1 inside CIDR
-      tunnel2_inside_cidr = "169.254.10.4/30"    # VPN tunnel 2 inside CIDR
+      tunnel1_inside_cidr = "IP/30"    # VPN tunnel 1 inside CIDR
+      tunnel2_inside_cidr = "IP/30"    # VPN tunnel 2 inside CIDR
       static_routes_only  = false                 # false = BGP, true = static routes
       description         = "VPN to Client A HQ"
     }
@@ -52,7 +52,7 @@ clients = {
       enabled        = true
       instance_types = ["m5.large", "m5a.large", "t3.xlarge"]
       min_size       = 1
-      max_size       = 2
+      max_size       = 3
       desired_size   = 2
       disk_size      = 20
       capacity_type  = "SPOT"  # ON-DEMAND or "SPOT"
@@ -74,7 +74,7 @@ clients = {
       enable_waf                   = true   # Enable WAF for public ALB
       enable_sticky_sessions       = false  # Session affinity
       ssl_policy                   = "ELBSecurityPolicy-TLS13-1-2-2021-06"
-      ssl_certificate_arn          = "arn:aws:acm:us-east-2:123456789012:certificate/client-a-cert"  # ACM certificate
+      ssl_certificate_arn          = "<Input Resource NO>"  # ACM certificate
       ssl_certificate_arn_internal = null   # Optional separate cert for internal ALB
       allowed_cidr_blocks_public   = ["0.0.0.0/0"]  # Internet access
       allowed_cidr_blocks_internal = ["10.0.0.0/16"]  # VPN/Corporate network

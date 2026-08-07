@@ -1,7 +1,7 @@
-#  Variables for Foundation Layer 
-#  Per-Client VPC Architecture
+# ============================================================================
+# Foundation Layer - Variables
+# ============================================================================
 
-# Project Configuration
 variable "environment" {
   description = "Environment name"
   type        = string
@@ -12,19 +12,17 @@ variable "region" {
   type        = string
 }
 
-# Monitoring Configuration
 variable "sns_topic_arn" {
   description = "SNS topic ARN for VPN alarms"
   type        = string
   default     = null
 }
 
-
-# ============================================================================
-# Per-Client Configuration
-# ============================================================================
-# Clients are defined in clients.auto.tfvars
-# Each client gets a dedicated VPC with unique CIDR from cidr-registry.yaml
+variable "transit_gateway_id" {
+  description = "Transit Gateway ID (set to null during initial foundation bootstrap)"
+  type        = string
+  default     = null
+}
 
 variable "clients" {
   description = "Map of client configurations for dynamic per-client VPC provisioning"
@@ -33,18 +31,15 @@ variable "clients" {
     client_code = string
     tier        = string
     
-    # Per-client VPC CIDR - must be globally unique
     network = object({
-      vpc_cidr = string  # From cidr-registry.yaml
+      vpc_cidr = string
     })
     
-    # Security group configuration
     security = object({
       custom_ports   = list(number)
       database_ports = list(number)
     })
     
-    # Optional VPN configuration
     vpn = optional(object({
       enabled             = bool
       customer_gateway_ip = string
@@ -57,14 +52,13 @@ variable "clients" {
       description         = string
     }))
     
-    # Client metadata for tagging
     metadata = object({
-      full_name      = string
-      industry       = string
-      contact_email  = string
-      compliance     = list(string)
-      cost_center    = string
-      business_unit  = string
+      full_name     = string
+      industry      = string
+      contact_email = string
+      compliance    = list(string)
+      cost_center   = string
+      business_unit = string
     })
   }))
   

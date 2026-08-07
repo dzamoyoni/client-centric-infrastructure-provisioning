@@ -85,8 +85,8 @@ provider "aws" {
 data "terraform_remote_state" "foundation" {
   backend = "s3"
   config = {
-    bucket = var.terraform_state_bucket
-    key    = "providers/aws/regions/${var.region}/layers/01-foundation/${var.environment}/terraform.tfstate"
+    bucket = "terraform-state-${var.region}-${var.environment}-myorg"
+    key    = "${var.region}/01-foundation/${var.environment}/terraform.tfstate"
     region = var.terraform_state_region
   }
 }

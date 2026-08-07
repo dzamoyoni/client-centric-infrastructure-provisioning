@@ -8,8 +8,8 @@ environment  = "production"
 region       = "us-east-2"
 
 # Terraform State
-terraform_state_bucket = "ohio-01-terraform-state-production"
-terraform_state_region = "us-east-2"
+# terraform_state_bucket = "ohio-01-terraform-state-production"
+# terraform_state_region = "us-east-2"
 
 # Database Instance Configuration
 key_name              = "ohio-01-key"
@@ -17,7 +17,7 @@ master_instance_type  = "t3.medium"
 replica_instance_type = "t3.medium"
 
 # Storage Configuration
-data_volume_size   = 100
+data_volume_size   = 50
 wal_volume_size    = 50
 backup_volume_size = 50
 
@@ -32,10 +32,8 @@ management_cidr_blocks = [
 
 # Database Credentials (use AWS Secrets Manager in production)
 database_passwords = {
-  "est-test-a" = "change-me-in-production"
-  "est-test-b" = "change-me-in-production"
+  "zam" = "change-me-in-production"
 }
 replication_passwords = {
-  "est-test-a" = "change-me-in-production"
-  "est-test-b" = "change-me-in-production"
+  "zam" = "change-me-in-production"
 }

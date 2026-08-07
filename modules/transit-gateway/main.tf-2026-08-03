@@ -48,8 +48,7 @@ resource "aws_ec2_transit_gateway_vpc_attachment" "this" {
 
   dns_support                                     = try(each.value.dns_support, true) ? "enable" : "disable"
   ipv6_support                                    = try(each.value.ipv6_support, false) ? "enable" : "disable"
-  # ➕ DEFAULT CHANGED TO TRUE: Prevents asymmetric cross-AZ TCP drops for HA Egress NAT
-  appliance_mode_support                          = try(each.value.appliance_mode_support, true) ? "enable" : "disable"
+  appliance_mode_support                          = try(each.value.appliance_mode_support, false) ? "enable" : "disable"
   transit_gateway_default_route_table_association = try(each.value.transit_gateway_default_route_table_association, true)
   transit_gateway_default_route_table_propagation = try(each.value.transit_gateway_default_route_table_propagation, true)
 
@@ -57,8 +56,8 @@ resource "aws_ec2_transit_gateway_vpc_attachment" "this" {
     var.common_tags,
     try(each.value.tags, {}),
     {
-      Name    = "${var.name}-${each.key}-attachment"
-      VPC     = each.key
+      Name   = "${var.name}-${each.key}-attachment"
+      VPC    = each.key
       Purpose = "Transit Gateway VPC Attachment"
     }
   )
@@ -237,12 +236,12 @@ resource "aws_iam_role_policy" "flow_log" {
 resource "aws_flow_log" "tgw" {
   count = var.enable_flow_logs ? 1 : 0
 
-  iam_role_arn             = aws_iam_role.flow_log[0].arn
-  log_destination          = aws_cloudwatch_log_group.tgw_flow_logs[0].arn
-  log_destination_type     = "cloud-watch-logs"
-  traffic_type             = "ALL"
-  transit_gateway_id       = aws_ec2_transit_gateway.main.id
-  max_aggregation_interval = 60 # Transit Gateway only supports 60 seconds
+  iam_role_arn              = aws_iam_role.flow_log[0].arn
+  log_destination           = aws_cloudwatch_log_group.tgw_flow_logs[0].arn
+  log_destination_type      = "cloud-watch-logs"
+  traffic_type              = "ALL"
+  transit_gateway_id        = aws_ec2_transit_gateway.main.id
+  max_aggregation_interval  = 60  # Transit Gateway only supports 60 seconds
 
   tags = merge(var.common_tags, {
     Name    = "${var.name}-flow-logs"

@@ -82,7 +82,7 @@ variable "enable_deletion_protection" {
 variable "enable_access_logs" {
   description = "Enable ALB access logs to S3"
   type        = bool
-  default     = true
+  default     = false
 }
 
 variable "access_logs_bucket" {

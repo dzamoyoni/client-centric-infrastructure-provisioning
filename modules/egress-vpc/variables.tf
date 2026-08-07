@@ -2,10 +2,6 @@
 # Egress VPC Module - Variables
 # ============================================================================
 
-# ============================================================================
-# Required Variables
-# ============================================================================
-
 variable "project_name" {
   description = "Project name for resource naming"
   type        = string
@@ -49,6 +45,32 @@ variable "availability_zones" {
 variable "common_tags" {
   description = "Common tags to apply to all resources"
   type        = map(string)
+}
+
+# ============================================================================
+# Transit Gateway & Cross-VPC Egress Routing
+# ============================================================================
+
+variable "transit_gateway_id" {
+  description = "The ID of the Transit Gateway used to route return traffic back to spoke VPCs. Can be null during initial bootstrap."
+  type        = string
+  default     = null
+
+  validation {
+    condition     = var.transit_gateway_id == null || can(regex("^tgw-[a-z0-9]+$", var.transit_gateway_id))
+    error_message = "Transit Gateway ID must be null or a valid TGW identifier starting with 'tgw-'."
+  }
+}
+
+variable "spoke_vpcs_cidrs" {
+  description = "List of CIDR blocks or supernets for Spoke/Client VPCs requiring internet return routing."
+  type        = list(string)
+  default     = ["10.0.0.0/16"]
+
+  validation {
+    condition     = alltrue([for cidr in var.spoke_vpcs_cidrs : can(cidrhost(cidr, 0))])
+    error_message = "All Spoke VPC CIDRs must be valid CIDR blocks."
+  }
 }
 
 # ============================================================================

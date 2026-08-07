@@ -1,9 +1,6 @@
 # ============================================================================
 # Egress VPC Module - Centralized NAT Gateway
 # ============================================================================
-# Provides centralized internet egress for multiple VPCs via Transit Gateway
-# Features: HA NAT Gateways, VPC endpoints, flow logs, security controls
-# ============================================================================
 
 terraform {
   required_version = ">= 1.5"
@@ -15,18 +12,18 @@ terraform {
   }
 }
 
-# ============================================================================
-# Local Variables - Sanitization
-# ============================================================================
-
 locals {
-  # Sanitize project_name for resource names (CloudWatch, IAM)
-  # AWS resource naming rules: alphanumeric, hyphens, underscores only
   sanitized_project_name = replace(lower(var.project_name), " ", "-")
+
+  # Build return route map dynamically if transit_gateway_id is present
+  spoke_return_routes = var.transit_gateway_id == null ? {} : {
+    for cidr in distinct(var.spoke_vpcs_cidrs) :
+    replace(cidr, "/", "_") => cidr
+  }
 }
 
 # ============================================================================
-# Egress VPC
+# VPC & Gateway Infrastructure
 # ============================================================================
 
 resource "aws_vpc" "egress" {
@@ -42,10 +39,6 @@ resource "aws_vpc" "egress" {
   })
 }
 
-# ============================================================================
-# Internet Gateway
-# ============================================================================
-
 resource "aws_internet_gateway" "egress" {
   vpc_id = aws_vpc.egress.id
 
@@ -57,7 +50,7 @@ resource "aws_internet_gateway" "egress" {
 }
 
 # ============================================================================
-# Public Subnets - For NAT Gateways
+# Subnets
 # ============================================================================
 
 resource "aws_subnet" "public" {
@@ -77,10 +70,6 @@ resource "aws_subnet" "public" {
   })
 }
 
-# ============================================================================
-# Private Subnets - For Transit Gateway Attachment
-# ============================================================================
-
 resource "aws_subnet" "private" {
   count = length(var.availability_zones)
 
@@ -98,7 +87,7 @@ resource "aws_subnet" "private" {
 }
 
 # ============================================================================
-# Elastic IPs for NAT Gateways
+# NAT Gateways
 # ============================================================================
 
 resource "aws_eip" "nat" {
@@ -115,10 +104,6 @@ resource "aws_eip" "nat" {
 
   depends_on = [aws_internet_gateway.egress]
 }
-
-# ============================================================================
-# NAT Gateways - Centralized (1 or 2 for HA)
-# ============================================================================
 
 resource "aws_nat_gateway" "egress" {
   count = var.enable_high_availability ? length(var.availability_zones) : 1
@@ -137,7 +122,7 @@ resource "aws_nat_gateway" "egress" {
 }
 
 # ============================================================================
-# Public Route Table
+# Public Route Table & Dynamic Return Routing
 # ============================================================================
 
 resource "aws_route_table" "public" {
@@ -162,8 +147,24 @@ resource "aws_route_table_association" "public" {
   route_table_id = aws_route_table.public.id
 }
 
+# DYNAMIC RETURN ROUTES BACK TO TGW
+resource "aws_route" "public_to_spoke_tgw" {
+  for_each = local.spoke_return_routes
+
+  route_table_id         = aws_route_table.public.id
+  destination_cidr_block = each.value
+  transit_gateway_id     = var.transit_gateway_id
+
+  depends_on = [aws_route_table.public]
+
+  timeouts {
+    create = "5m"
+    delete = "5m"
+  }
+}
+
 # ============================================================================
-# Private Route Tables - Routes to NAT Gateway
+# Private Route Tables
 # ============================================================================
 
 resource "aws_route_table" "private" {
@@ -171,7 +172,6 @@ resource "aws_route_table" "private" {
 
   vpc_id = aws_vpc.egress.id
 
-  # Route to NAT Gateway (AZ-specific in HA mode, single NAT otherwise)
   route {
     cidr_block     = "0.0.0.0/0"
     nat_gateway_id = var.enable_high_availability ? aws_nat_gateway.egress[count.index].id : aws_nat_gateway.egress[0].id
@@ -193,16 +193,9 @@ resource "aws_route_table_association" "private" {
 }
 
 # ============================================================================
-# Transit Gateway Routes (Added after TGW attachment is created)
-# ============================================================================
-# Note: These routes will be added by the transit-gateway layer
-# They route traffic from spoke VPCs (via TGW) to the private subnets
-
-# ============================================================================
-# VPC Endpoints - Cost Optimization
+# VPC Endpoints
 # ============================================================================
 
-# S3 Gateway Endpoint (No cost)
 resource "aws_vpc_endpoint" "s3" {
   count = var.enable_vpc_endpoints ? 1 : 0
 
@@ -222,7 +215,6 @@ resource "aws_vpc_endpoint" "s3" {
   })
 }
 
-# DynamoDB Gateway Endpoint (No cost)
 resource "aws_vpc_endpoint" "dynamodb" {
   count = var.enable_vpc_endpoints ? 1 : 0
 
@@ -241,10 +233,6 @@ resource "aws_vpc_endpoint" "dynamodb" {
     Layer   = "Foundation"
   })
 }
-
-# ============================================================================
-# Security Group for VPC Endpoints
-# ============================================================================
 
 resource "aws_security_group" "vpc_endpoints" {
   count = var.enable_vpc_endpoints ? 1 : 0
@@ -281,28 +269,24 @@ resource "aws_security_group" "vpc_endpoints" {
 }
 
 # ============================================================================
-# VPC Flow Logs - Security & Monitoring
+# Flow Logs
 # ============================================================================
 
 locals {
-  # Dynamically construct the role name using project name & region, or use custom override if provided
   dynamic_flow_log_role_name = coalesce(
     var.flow_log_role_name,
     "${local.sanitized_project_name}-egress-vpc-flow-log-role-${var.region}"
   )
 
-  # Resolve the active IAM Role ARN based on creation flag and flow log status
   flow_log_role_arn = !var.enable_flow_logs ? null : (
     var.create_flow_log_role ? aws_iam_role.flow_log[0].arn : data.aws_iam_role.existing_flow_log[0].arn
   )
 
-  # Resolve active IAM Role ID/Name for policy attachment
   flow_log_role_id = !var.enable_flow_logs ? null : (
     var.create_flow_log_role ? aws_iam_role.flow_log[0].id : data.aws_iam_role.existing_flow_log[0].id
   )
 }
 
-# 1. VPC Flow Log Resource
 resource "aws_flow_log" "egress" {
   count = var.enable_flow_logs ? 1 : 0
 
@@ -318,7 +302,6 @@ resource "aws_flow_log" "egress" {
   })
 }
 
-# 2. CloudWatch Log Group
 resource "aws_cloudwatch_log_group" "vpc_flow_log" {
   count = var.enable_flow_logs ? 1 : 0
 
@@ -333,7 +316,6 @@ resource "aws_cloudwatch_log_group" "vpc_flow_log" {
   })
 }
 
-# 3. Create IAM Role (Only if enabled AND create_flow_log_role is true)
 resource "aws_iam_role" "flow_log" {
   count = var.enable_flow_logs && var.create_flow_log_role ? 1 : 0
 
@@ -359,14 +341,12 @@ resource "aws_iam_role" "flow_log" {
   })
 }
 
-# 4. Fetch Existing IAM Role (Only if enabled AND create_flow_log_role is false)
 data "aws_iam_role" "existing_flow_log" {
   count = var.enable_flow_logs && !var.create_flow_log_role ? 1 : 0
 
   name = local.dynamic_flow_log_role_name
 }
 
-# 5. Attach Policy (Only if creating a new role; skips if using existing role)
 resource "aws_iam_role_policy" "flow_log" {
   count = var.enable_flow_logs && var.create_flow_log_role ? 1 : 0
 
